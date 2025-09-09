@@ -1,0 +1,8 @@
+.git
+.gitignore
+.dockerignore
+.env
+output*
+__pycache__
+*.pyc
+.DS_Store

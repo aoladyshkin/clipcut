@@ -9,8 +9,10 @@ COPY requirements.txt .
 
 # Install any needed packages specified in requirements.txt
 # We also need ffmpeg for moviepy and git for installing packages from git
-RUN apt-get update && apt-get install -y ffmpeg git && \
-    pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git && \
+    pip install --no-cache-dir -r requirements.txt && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of the application's code to the working directory
 COPY . .

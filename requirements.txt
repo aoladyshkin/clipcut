@@ -1,0 +1,8 @@
+openai
+moviepy
+yt-dlp
+torch
+git+https://github.com/m-bain/whisperX.git
+python-telegram-bot
+python-dotenv
+pytubefix

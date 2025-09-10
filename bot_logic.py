@@ -452,8 +452,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
-    shorts_timecodes = [{'start': '00:01:48', 'end': '00:02:24', 'hook': '«У нас маркетинга нет»: что это реально значит и зачем он предпринимателю? '}, {'start': '00:02:29', 'end': '00:02:51', 'hook': '«Предпринимателей мало — и маркетинга тоже». Но всё не так однозначно '}, {'start': '00:02:41', 'end': '00:03:12', 'hook': 'Даже на Марсе нашли воду. А у нас — маркетинг? Почему США впереди '}]
-    # get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only))
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only))
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")

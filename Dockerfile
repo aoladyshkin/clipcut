@@ -9,7 +9,7 @@ COPY requirements.txt .
 
 # Install dependencies and fix ImageMagick policy
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git imagemagick && \
-    sed -i 's#.*<policy domain="path" rights="none" pattern="@*"/>#<!-- & -->#' /etc/ImageMagick-7/policy.xml && \
+    echo '<policymap></policymap>' > /etc/ImageMagick-7/policy.xml && \
     pip install --no-cache-dir -r requirements.txt && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

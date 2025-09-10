@@ -1,9 +1,9 @@
 openai
+python-telegram-bot
 moviepy==1.0.3
 Pillow<10.0.0
 yt-dlp
-torch
-git+https://github.com/m-bain/whisperX.git
-python-telegram-bot
+faster-whisper
+ctranslate2
 python-dotenv
 pytubefix

@@ -7,9 +7,9 @@ WORKDIR /app
 # Copy the dependencies file to the working directory
 COPY requirements.txt .
 
-# Install any needed packages specified in requirements.txt
-# We also need ffmpeg for moviepy and git for installing packages from git
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git && \
+# Install dependencies and fix ImageMagick policy
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git imagemagick && \
+    echo '<policymap></policymap>' > /etc/ImageMagick-7/policy.xml && \
     pip install --no-cache-dir -r requirements.txt && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

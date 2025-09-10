@@ -20,8 +20,7 @@ from openai import OpenAI
 import time
 import tempfile
 import re
-import torch
-import whisperx
+from faster_whisper import WhisperModel
 from transcription import get_transcript_segments_and_file, get_audio_duration
 
 
@@ -141,7 +140,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         "• В первые 3 сек — «зацепка».\n"
         "Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст).\n"
         "Ответ — СТРОГО JSON-массив:\n"
-        "[{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}]"
+        "[{{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}}]"
     )
 
     # 1) создаём Vector Store
@@ -237,7 +236,6 @@ def _response_text(resp) -> str:
     return str(resp)
 
 
-
 def _extract_json_array(text: str) -> str:
     start = text.find('[')
     if start == -1:
@@ -326,57 +324,22 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
     
     return video_canvas, subtitle_y_pos, subtitle_width
 
-
-def _get_subtitle_items(subtitles_type, transcript_segments, audio_path, start_cut, end_cut, whisper_model_a, whisper_metadata, device):
+def _get_subtitle_items(subtitles_type, transcript_segments, audio_path, start_cut, end_cut, faster_whisper_model):
     items = []
     if subtitles_type == 'word-by-word':
-        # Определяем границы для выравнивания с буфером
-        overlapping_segments = [s for s in transcript_segments if s['start'] < end_cut and s['end'] > start_cut]
-        if not overlapping_segments:
-            return []
-
-        align_start = min(s['start'] for s in overlapping_segments)
-        align_end = max(s['end'] for s in overlapping_segments)
-
-        # Готовим сегменты для WhisperX с относительными таймкодами для расширенного фрагмента
-        whisperx_segments = []
-        for seg in overlapping_segments:
-            whisperx_segments.append({
-                'text': seg['text'],
-                'start': seg['start'] - align_start,
-                'end': seg['end'] - align_start
-            })
-
-        # Извлекаем расширенный аудиофрагмент
-        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_file:
-            audio_chunk_path = tmp_file.name
+        prompt_text = ""
+        for seg in transcript_segments:
+            if seg['start'] >= start_cut and seg['end'] <= end_cut:
+                prompt_text += seg['text'] + " "
         
-        cmd = [
-            "ffmpeg", "-i", str(audio_path), "-ss", str(align_start), "-to", str(align_end),
-            "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "32k", "-y", audio_chunk_path
-        ]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-
-        # Выравниваем слова на расширенном фрагменте
-        audio_file = whisperx.load_audio(audio_chunk_path)
-        result = whisperx.align(whisperx_segments, whisper_model_a, whisper_metadata, audio_file, device, return_char_alignments=False)
-        word_segments = result["segments"]
-        os.remove(audio_chunk_path)
-
-        # Фильтруем слова, чтобы оставить только те, что внутри оригинального отрезка short'а
-        for segment in word_segments:
-            for word_info in segment.get('words', []):
-                abs_word_start = align_start + word_info['start']
-                abs_word_end = align_start + word_info['end']
-
-                if abs_word_start >= start_cut and abs_word_end <= end_cut:
-                    word_text = word_info['word'].replace('.', '').replace(',', '')
-                    if word_text.strip():
-                        items.append({
-                            'text': word_text,
-                            'start': abs_word_start - start_cut, # Делаем таймкод относительным начала short'а
-                            'end': abs_word_end - start_cut
-                        })
+        segments, _ = faster_whisper_model.transcribe(str(audio_path), word_timestamps=True, clip_timestamps=[start_cut, end_cut], initial_prompt=prompt_text.strip())
+        for segment in segments:
+            for word in segment.words:
+                items.append({
+                    'text': word.word.upper(),
+                    'start': word.start - start_cut,
+                    'end': word.end - start_cut
+                })
     else: # phrases
         for ts in transcript_segments:
             if ts["start"] >= start_cut and ts["end"] <= end_cut or (ts["start"] < start_cut and ts["end"] > start_cut) or (ts["start"] < end_cut and ts["end"] > end_cut):
@@ -399,17 +362,16 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
     bottom_video_path = config.get('bottom_video_path')
     subtitles_type = config.get('subtitles_type', 'word-by-word')
 
-    model_a, metadata, device = None, None, None
+    faster_whisper_model = None
 
     if subtitle_style == 'yellow':
         text_color = '#EDFF03'
     else:
         text_color = 'white'
 
-    # --- Инициализация WhisperX (если нужно) ---
+    # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model_a, metadata = whisperx.load_align_model(language_code=lang_code, device=device)
+        faster_whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
 
     # No longer collecting results in a list to return
     for i, short in enumerate(shorts_timecodes, 1):
@@ -439,7 +401,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
         # --- Создание и наложение субтитров ---
         subtitle_items = _get_subtitle_items(
             subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
-            model_a, metadata, device
+            faster_whisper_model
         )
         subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
 
@@ -531,7 +493,7 @@ if __name__ == "__main__":
         'layout': 'main_only',
 
         # Опции: 'word-by-word', 'phrases'
-        'subtitles_type': 'phrases',
+        'subtitles_type': 'word-by-word',
 
         # Опции: True, False
         'capitalize_sentences': True

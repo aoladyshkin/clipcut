@@ -10,8 +10,8 @@ The core technologies used are Python, with the following key libraries:
 - `python-telegram-bot` for the Telegram bot interface.
 - `moviepy` for video editing.
 - `yt-dlp` for downloading YouTube videos.
-- `openai` for audio transcription (Whisper) and content analysis (GPT-4).
-- `whisperx` for word-level timestamp alignment.
+- `openai` for content analysis (GPT-4).
+- `faster-whisper` and `ctranslate2` for efficient, CPU-friendly, word-level audio transcription.
 - `python-dotenv` for managing environment variables.
 
 ## Project Workflow
@@ -24,15 +24,11 @@ The core technologies used are Python, with the following key libraries:
 
 ## Building and Running
 
-To get the project running, you'll need to set up the environment and dependencies.
+This project is designed to be deployed using Docker. The following instructions are for running the bot on a server or your local machine with Docker.
 
 ### 1. Dependencies
 
-The project requires the following Python libraries. It's recommended to use a virtual environment. You can install all dependencies using the `requirements.txt` file:
-
-```bash
-pip install -r requirements.txt
-```
+All Python dependencies are listed in `requirements.txt` with pinned versions to ensure compatibility. The Dockerfile also installs system-level dependencies like `ffmpeg` and `imagemagick`.
 
 ### 2. Configuration
 
@@ -48,12 +44,26 @@ DELETE_OUTPUT_AFTER_SENDING="true"
 - `TELEGRAM_BOT_TOKEN`: The token for your Telegram bot.
 - `DELETE_OUTPUT_AFTER_SENDING`: Set to `true` to automatically delete the video files from the server after they have been sent to the user.
 
-### 3. Running
+### 3. Deployment with Docker
 
-You can run the bot with the following command:
+These steps assume you have Docker installed and have cloned the repository to your server.
 
+**A. Prepare Static Files (if necessary)**
+
+The `keepers` directory contains large video files that are not stored in the git repository. If you need them, you must upload this directory to your server's home directory (e.g., `~/keepers`).
+
+**B. Build the Docker Image**
+
+From the root of the project directory, run the build command:
 ```bash
-python3 bot.py
+docker build -t clipcut-bot .
 ```
 
-The bot will start polling for updates from Telegram. You can then interact with it by sending commands in your Telegram client.
+**C. Run the Docker Container**
+
+Run the container in detached mode, passing the environment variables from the `.env` file and mounting the `keepers` directory as a volume:
+```bash
+docker run -d --name clipcut-bot --env-file .env -v ~/keepers:/app/keepers clipcut-bot
+```
+
+Your bot is now running. You can view its logs with `docker logs -f clipcut-bot`.

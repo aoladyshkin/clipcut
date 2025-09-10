@@ -20,7 +20,6 @@ from openai import OpenAI
 import time
 import tempfile
 import re
-import torch
 from faster_whisper import WhisperModel
 from transcription import get_transcript_segments_and_file, get_audio_duration
 
@@ -141,7 +140,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         "• В первые 3 сек — «зацепка».\n"
         "Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст).\n"
         "Ответ — СТРОГО JSON-массив:\n"
-        "[{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}]"
+        "[{{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}}]"
     )
 
     # 1) создаём Vector Store
@@ -372,8 +371,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
 
     # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        faster_whisper_model = WhisperModel("base", device=device, compute_type="int8")
+        faster_whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
 
     # No longer collecting results in a list to return
     for i, short in enumerate(shorts_timecodes, 1):

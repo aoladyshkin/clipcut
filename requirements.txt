@@ -2,7 +2,7 @@ openai
 moviepy==1.0.3
 Pillow<10.0.0
 yt-dlp
-torch
+torch --index-url https://download.pytorch.org/whl/cpu
 faster-whisper
 python-telegram-bot
 python-dotenv

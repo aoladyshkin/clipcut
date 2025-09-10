@@ -83,9 +83,8 @@ async def run_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         # No need to check 'results' or iterate through them here
-        await context.bot.edit_message_text(
+        await context.bot.send_message(
             chat_id=chat_id,
-            message_id=status_message.message_id,
             text="Обработка завершена! Все видео отправлены."
         )
 

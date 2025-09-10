@@ -1,5 +1,6 @@
 openai
-moviepy
+moviepy==1.0.3
+Pillow<10.0.0
 yt-dlp
 torch
 git+https://github.com/m-bain/whisperX.git

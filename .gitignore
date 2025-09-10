@@ -13,3 +13,6 @@ __pycache__/
 
 # Large media files
 keepers/
+
+# Large media files
+venv/

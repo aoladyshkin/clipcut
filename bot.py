@@ -19,7 +19,7 @@ load_dotenv()
 
 # Состояния для диалога
 (GET_URL, GET_SUBTITLE_STYLE, GET_BOTTOM_VIDEO, 
-GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION) = range(8)
+GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION, GET_SHORTS_NUMBER) = range(9)
 
 def run_blocking_task(target, args):
     """Запускает блокирующую задачу в отдельном потоке."""
@@ -127,11 +127,31 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return GET_AI_TRANSCRIPTION
 
 async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет выбор транскрипции и запрашивает сетку."""
+    """Сохраняет выбор транскрипции и запрашивает количество шортсов."""
     query = update.callback_query
     await query.answer()
     context.user_data['config']['force_ai_transcription'] = query.data == 'ai'
     logger.info(f"Config: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
+
+    keyboard = [
+        [
+            InlineKeyboardButton("Авто", callback_data='auto'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
+        reply_markup=reply_markup
+    )
+    return GET_SHORTS_NUMBER
+
+
+async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сохраняет 'Авто' для количества шортсов и запрашивает сетку."""
+    query = update.callback_query
+    await query.answer()
+    context.user_data['config']['shorts_number'] = 'auto'
+    logger.info("Config: shorts_number = 'auto'")
 
     keyboard = [
         [
@@ -143,6 +163,31 @@ async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)
     return GET_LAYOUT
 
+
+async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сохраняет число шортсов и запрашивает сетку."""
+    try:
+        number = int(update.message.text)
+        if number <= 0:
+            await update.message.reply_text("Пожалуйста, введите положительное число.")
+            return GET_SHORTS_NUMBER
+        
+        context.user_data['config']['shorts_number'] = number
+        logger.info(f"Config: shorts_number = {number}")
+
+        keyboard = [
+            [
+                InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
+                InlineKeyboardButton("Только основное видео", callback_data='main_only'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Выберите сетку шортса:", reply_markup=reply_markup)
+        return GET_LAYOUT
+
+    except ValueError:
+        await update.message.reply_text("Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
+        return GET_SHORTS_NUMBER
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет стиль субтитров и запрашивает капитализацию."""
@@ -235,8 +280,14 @@ def format_config(config):
     sub_style_map = {'white': 'Белый', 'yellow': 'Желтый'}
     capitalize_map = {True: 'Да', False: 'Нет'}
     transcription_map = {True: 'С помощью AI', False: 'Скачать с YouTube'}
+    shorts_number = config.get('shorts_number', 'Авто')
+    if shorts_number != 'auto':
+        shorts_number_text = str(shorts_number)
+    else:
+        shorts_number_text = 'Авто'
 
     settings_text = (
+        f"<b>Количество шортсов</b>: {shorts_number_text}\n"
         f"<b>Способ транскрипции</b>: {transcription_map.get(config.get('force_ai_transcription'), 'Не выбрано')}\n"
         f"<b>Сетка</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
         f"<b>Brainrot видео</b>: {video_map.get(config.get('bottom_video'), 'Нет')}\n"
@@ -321,6 +372,10 @@ def main():
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
             GET_AI_TRANSCRIPTION: [CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)')],
+            GET_SHORTS_NUMBER: [
+                CallbackQueryHandler(get_shorts_number_auto, pattern='^auto'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual)
+            ],
             GET_SUBTITLE_STYLE: [CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)')],
             GET_BOTTOM_VIDEO: [CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)')],
             GET_LAYOUT: [CallbackQueryHandler(get_layout, pattern='^(top_bottom|main_only)')],

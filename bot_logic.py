@@ -124,7 +124,7 @@ def merge_video_audio(video_path, audio_path, output_path):
         
     return output_path
 
-def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0):
+def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
     Делает запрос в Responses API (модель gpt-5) с включённым File Search.
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
@@ -133,6 +133,12 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     prompt = (
         "Ты — профессиональный монтажёр коротких видео для TikTok, YouTube Shorts и Reels.\n"
         "Из транскрипта выбери цельные, виральные фрагменты длительностью 20–60 сек (оптимум 30–45).\n\n"
+    )
+
+    if shorts_number != 'auto':
+        prompt += f"Найди ровно {shorts_number} самых подходящих фрагментов под эти критерии.\n\n"
+
+    prompt += (
         "Жёсткие правила:\n"
         "• Фрагмент самодостаточен (начало–развитие–завершение), не дроби на мелкие фразы.\n"
         "• Если кусок <15 сек — расширь за счёт соседних реплик.\n"
@@ -453,7 +459,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only))
+    shorts_number = config.get('shorts_number', 'auto')
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")

@@ -338,14 +338,35 @@ def _get_subtitle_items(subtitles_type, transcript_segments, audio_path, start_c
             if seg['start'] >= start_cut and seg['end'] <= end_cut:
                 prompt_text += seg['text'] + " "
         
-        segments, _ = faster_whisper_model.transcribe(str(audio_path), word_timestamps=True, clip_timestamps=[start_cut, end_cut], initial_prompt=prompt_text.strip())
-        for segment in segments:
-            for word in segment.words:
-                items.append({
-                    'text': word.word.upper(),
-                    'start': word.start - start_cut,
-                    'end': word.end - start_cut
-                })
+        tmp_chunk = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
+        chunk_path = tmp_chunk.name
+        tmp_chunk.close()
+
+        try:
+            cmd = [
+                "ffmpeg", "-i", str(audio_path),
+                "-ss", str(start_cut), "-to", str(end_cut),
+                "-ac", "1", "-ar", "16000",
+                "-c:a", "libopus", "-b:a", "32k",
+                "-y", chunk_path
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+            segments, _ = faster_whisper_model.transcribe(
+                chunk_path, 
+                word_timestamps=True, 
+                initial_prompt=prompt_text.strip()
+            )
+            for segment in segments:
+                for word in segment.words:
+                    items.append({
+                        'text': word.word.upper(),
+                        'start': word.start,
+                        'end': word.end
+                    })
+        finally:
+            os.remove(chunk_path)
+
     else: # phrases
         for ts in transcript_segments:
             if ts["start"] >= start_cut and ts["end"] <= end_cut or (ts["start"] < start_cut and ts["end"] > start_cut) or (ts["start"] < end_cut and ts["end"] > end_cut):

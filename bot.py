@@ -19,7 +19,7 @@ load_dotenv()
 
 # Состояния для диалога
 (GET_URL, GET_SUBTITLE_STYLE, GET_BOTTOM_VIDEO, 
-GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG) = range(7)
+GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION) = range(8)
 
 def run_blocking_task(target, args):
     """Запускает блокирующую задачу в отдельном потоке."""
@@ -118,13 +118,31 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     keyboard = [
         [
+            InlineKeyboardButton("Скачать с YouTube", callback_data='youtube'),
+            InlineKeyboardButton("С помощью AI (дольше, но точнее)", callback_data='ai'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Как получить транскрипцию видео?", reply_markup=reply_markup)
+    return GET_AI_TRANSCRIPTION
+
+async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Сохраняет выбор транскрипции и запрашивает сетку."""
+    query = update.callback_query
+    await query.answer()
+    context.user_data['config']['force_ai_transcription'] = query.data == 'ai'
+    logger.info(f"Config: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
+
+    keyboard = [
+        [
             InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
             InlineKeyboardButton("Только основное видео", callback_data='main_only'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите сетку шортса:", reply_markup=reply_markup)
+    await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)
     return GET_LAYOUT
+
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет стиль субтитров и запрашивает капитализацию."""
@@ -216,8 +234,10 @@ def format_config(config):
     sub_type_map = {'word-by-word': 'По одному слову', 'phrases': 'По фразе'}
     sub_style_map = {'white': 'Белый', 'yellow': 'Желтый'}
     capitalize_map = {True: 'Да', False: 'Нет'}
+    transcription_map = {True: 'С помощью AI', False: 'Скачать с YouTube'}
 
     settings_text = (
+        f"<b>Способ транскрипции</b>: {transcription_map.get(config.get('force_ai_transcription'), 'Не выбрано')}\n"
         f"<b>Сетка</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
         f"<b>Brainrot видео</b>: {video_map.get(config.get('bottom_video'), 'Нет')}\n"
         f"<b>Тип субтитров</b>: {sub_type_map.get(config.get('subtitles_type'), 'Не выбрано')}\n"
@@ -300,6 +320,7 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
+            GET_AI_TRANSCRIPTION: [CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)')],
             GET_SUBTITLE_STYLE: [CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)')],
             GET_BOTTOM_VIDEO: [CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)')],
             GET_LAYOUT: [CallbackQueryHandler(get_layout, pattern='^(top_bottom|main_only)')],

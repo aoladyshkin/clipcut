@@ -140,7 +140,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         "• В первые 3 сек — «зацепка».\n"
         "Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст).\n"
         "Ответ — СТРОГО JSON-массив:\n"
-        "[{{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}}]"
+        "[{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}]"
     )
 
     # 1) создаём Vector Store
@@ -444,7 +444,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     if status_callback:
         status_callback("Анализируем видео...")
     print("Транскрибируем видео...")
-    transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"))
+    force_ai_transcription = config.get('force_ai_transcription', False)
+    transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
 
     if not transcript_segments:
         print("Не удалось получить транскрипцию.")

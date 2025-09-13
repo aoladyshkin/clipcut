@@ -224,8 +224,7 @@ def get_subtitle_items(subtitles_type: str,
                        audio_path: str,
                        start_cut: float,
                        end_cut: float,
-                       faster_whisper_model: WhisperModel,
-                       lang_code: str = "ru") -> List[Dict[str, Any]]:
+                       faster_whisper_model: WhisperModel) -> List[Dict[str, Any]]:
     """
     - 'word-by-word': простая транскрибация faster-whisper БЕЗ initial_prompt,
       каждое слово с таймкодом начала и конца; точки/запятые/кавычки убраны.
@@ -240,7 +239,6 @@ def get_subtitle_items(subtitles_type: str,
             # Минимальный и стабильный вызов распознавания:
             segments, _ = faster_whisper_model.transcribe(
                 chunk_path,
-                language=lang_code,
                 task="transcribe",
                 word_timestamps=True,
                 beam_size=5,

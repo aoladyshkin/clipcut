@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- 
 
 import os
 import shutil
@@ -304,7 +304,7 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
     
     return video_canvas, subtitle_y_pos, subtitle_width
 
-def process_video_clips(config, video_path, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None, lang_code="ru"):
+def process_video_clips(config, video_path, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None):
     final_width = 720
     final_height = 1280
     futures = []
@@ -354,8 +354,8 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
         # --- Создание и наложение субтитров ---
         subtitle_items = get_subtitle_items(
             subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
-            faster_whisper_model, lang_code=lang_code        )
-        subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
+            faster_whisper_model)
+        subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color, subtitles_type=subtitles_type)
 
 
         final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)

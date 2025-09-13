@@ -22,7 +22,7 @@ import time
 import tempfile
 import re
 from faster_whisper import WhisperModel
-from transcription import get_transcript_segments_and_file
+from transcription import get_transcript_segments_and_file, get_audio_duration
 from subtitles import create_subtitle_clips, get_subtitle_items
 
 
@@ -379,21 +379,19 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     }
     config['bottom_video_path'] = video_map.get(config['bottom_video'])
 
-    out_dir = Path('./output1') # get_unique_output_dir() 
+    out_dir = get_unique_output_dir() 
     
     if status_callback:
         status_callback("Скачиваем видео с YouTube...")
     print("Скачиваем видео с YouTube...")
     # скачиваем видео
-    # video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
+    video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
     
-    # # скачиваем аудио
-    # audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
-    audio_only = Path(out_dir) / "audio_only.ogg"
+    # скачиваем аудио
+    audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
 
     # Объединяем видео и аудио
-    # video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
-    video_full = Path(out_dir) / "video.mp4"
+    video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
 
     if status_callback:
         status_callback("Анализируем видео...")
@@ -408,11 +406,12 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = [{"start": "00:00:16.1", "end": "00:00:36", "hook": "Алгоритм YouTube нас зарывает из‑за блокировок — спасает только ваш лайк "}, {"start": "00:40:27", "end": "00:40:51", "hook": "Инопланетян не существует! — Брехня! — Фильм заканчивается на завязке "}, {"start": "00:41:30", "end": "00:41:54", "hook": "Кино и театр: можешь быть очень смелым — но это никто не увидит "}, {"start": "01:06:38", "end": "01:07:06", "hook": "«Сценарий мы купили, тебя увольняем»: как продюсеры ломают фильмы "}, {"start": "01:05:02", "end": "01:05:24", "hook": "Компромисс или запрет: фильм выйдет не тем, каким задуман… или не выйдет вовсе "}, {"start": "00:51:23", "end": "00:51:44", "hook": "Миф о «золотом веке»: СССР любят те, кто там никогда не жил "}, {"start": "01:24:08", "end": "01:24:50", "hook": "«Груз 200» — единственный Балабанов, который я могу смотреть "}, {"start": "00:08:19", "end": "00:08:47", "hook": "Почему мне должны нравиться песни для подростков? Публицистика — тоже жанр "}, {"start": "00:39:02", "end": "00:39:24", "hook": "Вы фиксируете историю «уехавших» — то, про что кино ещё не снято "}]
-    # get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
+        if status_callback:
+            status_callback("GPT не смог выделить подходящие отрезки для шортсов.")
         return [] # Return empty list for consistency
     if status_callback:
         status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаю короткие ролики...")
@@ -425,9 +424,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             future.result() # Ждем завершения отправки
 
     # если всё ок, можно удалить временный аудиофайл
-    # if os.path.exists(audio_only):
-    #     try: os.remove(audio_only)
-    #     except OSError: pass
+    if os.path.exists(audio_only):
+        try: os.remove(audio_only)
+        except OSError: pass
     
     if deleteOutputAfterSending:
         shutil.rmtree(out_dir)
@@ -437,8 +436,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
 
 if __name__ == "__main__":
-    url = "https://www.youtube.com/watch?v=3q9K2Pnehuw"
-    # "https://www.youtube.com/watch?v=2IaQdDjxViU"
+    url = "https://www.youtube.com/watch?v=2IaQdDjxViU"
     # ================== КОНФИГУРАЦИЯ ==================
     config = {
         # Опции: 'white', 'yellow'

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+
 import os
 import shutil
 from dotenv import load_dotenv
@@ -21,7 +22,8 @@ import time
 import tempfile
 import re
 from faster_whisper import WhisperModel
-from transcription import get_transcript_segments_and_file, get_audio_duration
+from transcription import get_transcript_segments_and_file
+from subtitles import create_subtitle_clips, get_subtitle_items
 
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -30,12 +32,13 @@ def format_seconds_to_hhmmss(seconds):
     seconds = float(seconds)
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    return f"{h:02d}:{m:02d}:{s:02d}"
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:05.1f}"
 
 def to_seconds(t: str) -> float:
-    h, m, s = map(float, t.split(":"))
-    return h * 3600 + m * 60 + s
+    h, m, s_part = t.split(':')
+    s = float(s_part)
+    return int(h) * 3600 + int(m) * 60 + s
 
 def get_unique_output_dir(base="output"):
     n = 1
@@ -261,35 +264,6 @@ def _extract_json_array(text: str) -> str:
                     return text[start:i+1]
     raise ValueError("Не удалось извлечь JSON-массив из ответа GPT.")
 
-
-def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, text_color):
-    subtitle_clips = []
-    shadow_offset = 5
-    
-    text_params = {
-        "fontsize": 40,
-        "font": 'fonts/Montserrat.ttf',
-        "method": "caption",
-        "size": (subtitle_width, None)
-    }
-
-    for item in items:
-        text = item['text']
-        start_rel = item['start']
-        end_rel = item['end']
-
-        temp_clip = TextClip(text, **text_params)
-        y_pos_centered = subtitle_y_pos - temp_clip.h / 2
-
-        shadow_clip = TextClip(text, color='black', **text_params).set_position(('center', y_pos_centered + shadow_offset)).set_start(start_rel).set_end(end_rel)
-        text_clip = TextClip(text, color=text_color, **text_params).set_position(('center', y_pos_centered)).set_start(start_rel).set_end(end_rel)
-        
-        subtitle_clips.append(shadow_clip)
-        subtitle_clips.append(text_clip)
-
-    return subtitle_clips
-
-
 def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, final_height):
     if layout == 'top_bottom':
         video_height = int(final_height * 0.6)
@@ -330,54 +304,6 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
     
     return video_canvas, subtitle_y_pos, subtitle_width
 
-def _get_subtitle_items(subtitles_type, transcript_segments, audio_path, start_cut, end_cut, faster_whisper_model):
-    items = []
-    if subtitles_type == 'word-by-word':
-        prompt_text = ""
-        for seg in transcript_segments:
-            if seg['start'] >= start_cut and seg['end'] <= end_cut:
-                prompt_text += seg['text'] + " "
-        
-        tmp_chunk = tempfile.NamedTemporaryFile(suffix=".ogg", delete=False)
-        chunk_path = tmp_chunk.name
-        tmp_chunk.close()
-
-        try:
-            cmd = [
-                "ffmpeg", "-i", str(audio_path),
-                "-ss", str(start_cut), "-to", str(end_cut),
-                "-ac", "1", "-ar", "16000",
-                "-c:a", "libopus", "-b:a", "32k",
-                "-y", chunk_path
-            ]
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-
-            segments, _ = faster_whisper_model.transcribe(
-                chunk_path, 
-                word_timestamps=True, 
-                initial_prompt=prompt_text.strip()
-            )
-            for segment in segments:
-                for word in segment.words:
-                    items.append({
-                        'text': word.word.upper(),
-                        'start': word.start,
-                        'end': word.end
-                    })
-        finally:
-            os.remove(chunk_path)
-
-    else: # phrases
-        for ts in transcript_segments:
-            if ts["start"] >= start_cut and ts["end"] <= end_cut or (ts["start"] < start_cut and ts["end"] > start_cut) or (ts["start"] < end_cut and ts["end"] > end_cut):
-                items.append({
-                    'text': ts['text'],
-                    'start': ts['start'] - start_cut,
-                    'end': ts['end'] - start_cut
-                })
-    return items
-
-# --- MoviePy обработка ---
 def process_video_clips(config, video_path, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None, lang_code="ru"):
     final_width = 720
     final_height = 1280
@@ -426,10 +352,9 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
         )
 
         # --- Создание и наложение субтитров ---
-        subtitle_items = _get_subtitle_items(
+        subtitle_items = get_subtitle_items(
             subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
-            faster_whisper_model
-        )
+            faster_whisper_model, lang_code=lang_code        )
         subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
 
 
@@ -454,19 +379,21 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     }
     config['bottom_video_path'] = video_map.get(config['bottom_video'])
 
-    out_dir = get_unique_output_dir()
+    out_dir = Path('./output1') # get_unique_output_dir() 
     
     if status_callback:
         status_callback("Скачиваем видео с YouTube...")
     print("Скачиваем видео с YouTube...")
     # скачиваем видео
-    video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
+    # video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
     
     # # скачиваем аудио
-    audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
+    # audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
+    audio_only = Path(out_dir) / "audio_only.ogg"
 
     # Объединяем видео и аудио
-    video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
+    # video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
+    video_full = Path(out_dir) / "video.mp4"
 
     if status_callback:
         status_callback("Анализируем видео...")
@@ -476,12 +403,13 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     if not transcript_segments:
         print("Не удалось получить транскрипцию.")
-        return []
+        return [] # Return empty list for consistency
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = [{"start": "00:00:16.1", "end": "00:00:36", "hook": "Алгоритм YouTube нас зарывает из‑за блокировок — спасает только ваш лайк "}, {"start": "00:40:27", "end": "00:40:51", "hook": "Инопланетян не существует! — Брехня! — Фильм заканчивается на завязке "}, {"start": "00:41:30", "end": "00:41:54", "hook": "Кино и театр: можешь быть очень смелым — но это никто не увидит "}, {"start": "01:06:38", "end": "01:07:06", "hook": "«Сценарий мы купили, тебя увольняем»: как продюсеры ломают фильмы "}, {"start": "01:05:02", "end": "01:05:24", "hook": "Компромисс или запрет: фильм выйдет не тем, каким задуман… или не выйдет вовсе "}, {"start": "00:51:23", "end": "00:51:44", "hook": "Миф о «золотом веке»: СССР любят те, кто там никогда не жил "}, {"start": "01:24:08", "end": "01:24:50", "hook": "«Груз 200» — единственный Балабанов, который я могу смотреть "}, {"start": "00:08:19", "end": "00:08:47", "hook": "Почему мне должны нравиться песни для подростков? Публицистика — тоже жанр "}, {"start": "00:39:02", "end": "00:39:24", "hook": "Вы фиксируете историю «уехавших» — то, про что кино ещё не снято "}]
+    # get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
@@ -497,9 +425,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             future.result() # Ждем завершения отправки
 
     # если всё ок, можно удалить временный аудиофайл
-    if os.path.exists(audio_only):
-        try: os.remove(audio_only)
-        except OSError: pass
+    # if os.path.exists(audio_only):
+    #     try: os.remove(audio_only)
+    #     except OSError: pass
     
     if deleteOutputAfterSending:
         shutil.rmtree(out_dir)
@@ -509,7 +437,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
 
 if __name__ == "__main__":
-    url = "https://www.youtube.com/watch?v=2IaQdDjxViU"
+    url = "https://www.youtube.com/watch?v=3q9K2Pnehuw"
+    # "https://www.youtube.com/watch?v=2IaQdDjxViU"
     # ================== КОНФИГУРАЦИЯ ==================
     config = {
         # Опции: 'white', 'yellow'

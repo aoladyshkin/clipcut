@@ -355,7 +355,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
         subtitle_items = get_subtitle_items(
             subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
             faster_whisper_model)
-        subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color, subtitles_type=subtitles_type)
+        subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
 
 
         final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)

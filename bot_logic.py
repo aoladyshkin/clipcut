@@ -417,7 +417,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаю короткие ролики...")
     print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
-    futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback, lang_code=lang_code)
+    futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback)
     
     if futures:
         for future in futures:

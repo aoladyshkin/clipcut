@@ -90,8 +90,8 @@ def _pick_caption(yt) -> Tuple[Optional[object], Optional[str]]:
 # =========================
 # ФИЛЬТР РЕМАРОК
 # =========================
-_BRACKETED_RE = re.compile(r'^\s*[\[\(].*?[\]\)]\s*$', re.IGNORECASE | re.DOTALL)
-_MUSIC_RE = re.compile(r'^[\s♪♫]+$', re.UNICODE)
+_BRACKETED_RE = re.compile(r'^\s*[\\\[\(].*?[\\\]\)]\s*$', re.IGNORECASE | re.DOTALL)
+_MUSIC_RE = re.compile(r'^[\s♪♫]+', re.UNICODE)
 
 def _is_non_speech(text: str) -> bool:
     t = text.strip()
@@ -116,13 +116,14 @@ def _xml_to_segments(xml_text: str) -> List[Dict[str, float]]:
 # =========================
 # НОРМАЛИЗАЦИЯ СЕГМЕНТОВ
 # =========================
-def normalize_segments(segs: List[Dict[str, float]]) -> List[Dict[str, float]]:
+def normalize_segments(segs: List[Dict[str, float]], duration: Optional[float] = None) -> List[Dict[str, float]]:
     """
     Единая нормализация для обоих источников (YouTube/Whisper):
     - удаление ремарок
     - сортировка
     - устранение пересечений
     - ОКРУГЛЕНИЕ start/end до 0.1 cек
+    - ОБРЕЗКА сегментов по длительности (если указана)
     """
     if not segs:
         return []
@@ -151,7 +152,7 @@ def normalize_segments(segs: List[Dict[str, float]]) -> List[Dict[str, float]]:
     if cleaned[-1]["end"] < cleaned[-1]["start"]:
         cleaned[-1]["end"] = cleaned[-1]["start"]
 
-    # ОКРУГЛЕНИЕ до десятых секунды
+    # ОКРУГЛЕНИЕ до десятых секунды и ОБРЕЗКА
     rounded = []
     for s in cleaned:
         rs = round(s["start"] * 10) / 10.0
@@ -159,6 +160,13 @@ def normalize_segments(segs: List[Dict[str, float]]) -> List[Dict[str, float]]:
         # защита от инверсий после округления
         if re_ < rs:
             re_ = rs
+        
+        if duration is not None:
+            if rs >= duration: 
+                continue  # Пропускаем сегменты, которые начинаются после конца аудио
+            rs = min(rs, duration)
+            re_ = min(re_, duration)
+
         rounded.append({"start": rs, "end": re_, "text": s["text"]})
 
     return rounded
@@ -185,12 +193,12 @@ def _to_caption_text(segs: List[Dict[str, float]]) -> str:
         lines.append(f"{a} --> {b}\n{seg['text']}\n")
     return "\n".join(lines).strip() + "\n"
 
-def write_captions_file(segments: List[Dict[str, float]], filename: str = "captions.txt") -> Path:
+def write_captions_file(segments: List[Dict[str, float]], filename: str = "captions.txt", audio_duration: Optional[float] = None) -> Path:
     """
     Пишем captions в TXT (совместимо с OpenAI Files API).
     Округление и устранение пересечений выполняются через normalize_segments().
     """
-    segs_norm = normalize_segments(segments)  # уже режет overlaps и округляет до 0.1с, если ты вставил прошлые правки
+    segs_norm = normalize_segments(segments, duration=audio_duration)
     txt = _to_caption_text(segs_norm)
     out_path = Path(filename)
     out_path.write_text(txt, encoding="utf-8")
@@ -209,7 +217,7 @@ def download_captions_from_youtube(url: str) -> Tuple[List[Dict[str, float]], Op
     cap, chosen_code = _pick_caption(yt)
     if not cap:
         raise RuntimeError(f"Подходящая дорожка не найдена. Доступные: "
-                           f"{[c for c, _ in _caption_pairs(yt.captions)]}")
+                           f"{[_c for _c, _ in _caption_pairs(yt.captions)]}")
 
     xml_text = cap.xml_captions
     segs = _xml_to_segments(xml_text)
@@ -297,12 +305,14 @@ def transcribe_via_whisper(audio_path) -> List[Dict[str, float]]:
 # =========================
 # ЕДИНАЯ ТОЧКА: ПОЛУЧИТЬ СЕГМЕНТЫ И ЗАПИСАТЬ SRT
 # =========================
-def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="", force_whisper=False) -> List[Dict[str, float]]:
+def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="", force_whisper=False) -> Tuple[List[Dict[str, any]], str]:
     """
-    Возвращает сегменты [{start,end,text}] и ПРИ ЭТОМ создаёт файл captions.srt
+    Возвращает сегменты [{start,end,text}] и ПРИ ЭТОМ создаёт файл captions.txt
     одинаковым способом для обоих источников (YouTube/Whisper).
     """
     segments: List[Dict[str, float]] = []
+    audio_duration = get_audio_duration(audio_path)
+    chosen_code = None
 
     if force_whisper:
         segments = transcribe_via_whisper(audio_path)
@@ -314,11 +324,11 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
             print(f"Не удалось получить субтитры с YouTube ({e}). Пытаемся через Whisper.")
             segments = transcribe_via_whisper(audio_path)
 
-    # ЕДИНАЯ запись в SRT (нормализация внутри write_captions_srt)
-    write_captions_file(segments, filename=(Path(out_dir) / "captions.txt"))
+    # ЕДИНАЯ запись в TXT (нормализация внутри write_captions_file)
+    write_captions_file(segments, filename=(Path(out_dir) / "captions.txt"), audio_duration=audio_duration)
 
     # Вернём уже нормализованные сегменты, чтобы совпадали с тем, что в файле
-    return normalize_segments(segments), chosen_code.replace("a.", "") if chosen_code else "ru"
+    return normalize_segments(segments, duration=audio_duration), chosen_code.replace("a.", "") if chosen_code else "ru"
 
 # ==== запуск ====
 if __name__ == "__main__":

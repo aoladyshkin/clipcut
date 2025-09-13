@@ -33,7 +33,7 @@ def format_seconds_to_hhmmss(seconds):
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = seconds % 60
-    return f"{h:02d}:{m:02d}:{s:05.1f}"
+    return f"{h:02d}:{m:02d}:{s:04.1f}"
 
 def to_seconds(t: str) -> float:
     h, m, s_part = t.split(':')
@@ -182,7 +182,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     json_str = _extract_json_array(raw)
     data = json.loads(json_str)
 
-    # как и раньше: SS.S -> HH:MM:SS, +0.5 сек к end
+    # как и раньше: SS.S -> HH:MM:SS.S, +0.5 сек к end
     items = [{
         "start": format_seconds_to_hhmmss(float(it["start"])),
         "end":   format_seconds_to_hhmmss(float(it["end"])),

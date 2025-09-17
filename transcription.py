@@ -92,7 +92,7 @@ def _pick_caption(yt) -> Tuple[Optional[object], Optional[str]]:
 # =========================
 _BRACKETED_RE = re.compile(r'^\s*[\\\[\(].*?[\\\]\)]\s*$', re.IGNORECASE | re.DOTALL)
 _MUSIC_RE = re.compile(r'^[\s♪♫]+', re.UNICODE)
-
+  
 def _is_non_speech(text: str) -> bool:
     t = text.strip()
     return (not t) or _MUSIC_RE.match(t) or _BRACKETED_RE.match(t)
@@ -116,6 +116,20 @@ def _xml_to_segments(xml_text: str) -> List[Dict[str, float]]:
 # =========================
 # НОРМАЛИЗАЦИЯ СЕГМЕНТОВ
 # =========================
+def _clean_segment_text(text: str) -> str:
+    """
+    Убирает нежелательные символы из текста, оставляя только буквы
+    (кириллические и латинские), цифры, пробелы и основную пунктуацию.
+    """
+    if not text:
+        return ""
+    # Этот регекс заменяет любой символ, который НЕ является буквой, цифрой,
+    # пробелом или одним из разрешенных знаков препинания (.,!?), на пустую строку.
+    # Это также решает проблему с ">> ".
+    cleaned_text = re.sub(r'[^a-zA-Zа-яА-Я0-9\s.,!?]', '', text)
+    return cleaned_text.strip()
+
+
 def normalize_segments(segs: List[Dict[str, float]], duration: Optional[float] = None) -> List[Dict[str, float]]:
     """
     Единая нормализация для обоих источников (YouTube/Whisper):
@@ -134,9 +148,14 @@ def normalize_segments(segs: List[Dict[str, float]], duration: Optional[float] =
         text = str(s.get("text", "")).strip()
         if not text or _is_non_speech(text):
             continue
+        
+        cleaned_text = _clean_segment_text(text)
+        if not cleaned_text:
+            continue
+
         start = float(s["start"])
         end = float(s["end"])
-        cleaned.append({"start": start, "end": end, "text": text})
+        cleaned.append({"start": start, "end": end, "text": cleaned_text})
 
     if not cleaned:
         return []

@@ -1,10 +1,10 @@
 import os
 import logging
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
 import asyncio
-import threading
+from typing import Dict
 
 # Импортируем основную функцию из вашего скрипта
 from bot_logic import main as process_video
@@ -21,29 +21,41 @@ load_dotenv()
 (GET_URL, GET_SUBTITLE_STYLE, GET_BOTTOM_VIDEO, 
 GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION, GET_SHORTS_NUMBER) = range(9)
 
-def run_blocking_task(target, args):
-    """Запускает блокирующую задачу в отдельном потоке."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    result = loop.run_until_complete(target(*args))
-    loop.close()
-    return result
+async def processing_worker(queue: asyncio.Queue, bot: Bot):
+    """Воркер, который обрабатывает видео из очереди."""
+    while True:
+        task_data = await queue.get()
+        chat_id = task_data['chat_id']
+        user_data = task_data['user_data']
+        
+        try:
+            logger.info(f"Начинаю обработку задачи для чата {chat_id}")
+            await run_processing(chat_id, user_data, bot)
+        except Exception as e:
+            logger.error(f"Ошибка в воркере для чата {chat_id}: {e}", exc_info=True)
+            try:
+                await bot.send_message(chat_id, f"Произошла критическая ошибка во время обработки вашего видео: {e}")
+            except Exception as send_e:
+                logger.error(f"Не удалось отправить сообщение об ошибке в чат {chat_id}: {send_e}")
+        finally:
+            queue.task_done()
+            logger.info(f"Завершена обработка задачи для чата {chat_id}. Задач в очереди: {queue.qsize()}")
 
-async def run_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def run_processing(chat_id: int, user_data: Dict, bot: Bot):
     """Асинхронно запускает обработку видео и отправляет результат."""
-    chat_id = update.message.chat.id
-    status_message = await context.bot.send_message(chat_id, "Начинаю скачивание и обработку видео... Это может занять некоторое время.")
+    status_message = await bot.send_message(chat_id, "Ваш запрос взят в работу. Начинаю скачивание и обработку видео... Это может занять некоторое время.")
 
     main_loop = asyncio.get_running_loop()
 
     async def send_status_update_async(status_text: str):
         nonlocal status_message
-        status_message = await context.bot.send_message(
+        # Просто отправляем новое сообщение, так как редактирование может быть сложным
+        await bot.send_message(
             chat_id=chat_id,
             text=f"{status_text}"
         )
 
-    # Synchronous wrapper for the async status update
     def send_status_update(status_text: str):
         asyncio.run_coroutine_threadsafe(send_status_update_async(status_text), main_loop)
 
@@ -51,7 +63,7 @@ async def run_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = f"Hook: {hook}\n\nТаймкод начала: {start}\n\nТаймкод конца: {end}"
         try:
             with open(file_path, 'rb') as video_file:
-                await context.bot.send_video(
+                await bot.send_video(
                     chat_id=chat_id, 
                     video=video_file, 
                     caption=caption, 
@@ -62,37 +74,32 @@ async def run_processing(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     write_timeout=600
                 )
         except Exception as e:
-            logger.error(f"Ошибка при отправке видео {file_path}: {e}")
-            await context.bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}")
+            logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
+            await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}")
 
-    # Synchronous wrapper for the async video sending
     def send_video_callback(file_path, hook, start, end):
         return asyncio.run_coroutine_threadsafe(send_video_async(file_path, hook, start, end), main_loop)
 
     try:
-        # Запускаем блокирующую функцию в отдельном потоке, чтобы не блокировать бота
-        # process_video no longer returns results, it sends them via callback
         delete_output = os.environ.get("DELETE_OUTPUT_AFTER_SENDING", "false").lower() == "true"
         await asyncio.to_thread(
             process_video,
-            context.user_data['url'],
-            context.user_data['config'],
-            send_status_update, # Pass the status callback
-            send_video_callback, # Pass the video sending callback
+            user_data['url'],
+            user_data['config'],
+            send_status_update,
+            send_video_callback,
             delete_output
         )
 
-        # No need to check 'results' or iterate through them here
-        await context.bot.send_message(
+        await bot.send_message(
             chat_id=chat_id,
             text="Обработка завершена! Все видео отправлены."
         )
 
     except Exception as e:
-        logger.error(f"Ошибка при обработке видео: {e}", exc_info=True)
-        await context.bot.edit_message_text(
+        logger.error(f"Ошибка при обработке видео для чата {chat_id}: {e}", exc_info=True)
+        await bot.send_message(
             chat_id=chat_id,
-            message_id=status_message.message_id,
             text=f"Произошла критическая ошибка во время обработки видео: {e}"
         )
 
@@ -114,7 +121,7 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return GET_URL
 
     context.user_data['url'] = url
-    logger.info(f"Пользователь предоставил URL: {url}")
+    logger.info(f"Пользователь {update.effective_user.id} предоставил URL: {url}")
 
     keyboard = [
         [
@@ -131,7 +138,7 @@ async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     context.user_data['config']['force_ai_transcription'] = query.data == 'ai'
-    logger.info(f"Config: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
+    logger.info(f"Config for {query.from_user.id}: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
 
     keyboard = [
         [
@@ -151,7 +158,7 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     context.user_data['config']['shorts_number'] = 'auto'
-    logger.info("Config: shorts_number = 'auto'")
+    logger.info(f"Config for {query.from_user.id}: shorts_number = 'auto'")
 
     keyboard = [
         [
@@ -173,7 +180,7 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             return GET_SHORTS_NUMBER
         
         context.user_data['config']['shorts_number'] = number
-        logger.info(f"Config: shorts_number = {number}")
+        logger.info(f"Config for {update.effective_user.id}: shorts_number = {number}")
 
         keyboard = [
             [
@@ -194,7 +201,7 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     context.user_data['config']['subtitle_style'] = query.data
-    logger.info(f"Config: subtitle_style = {query.data}")
+    logger.info(f"Config for {query.from_user.id}: subtitle_style = {query.data}")
 
     keyboard = [
         [
@@ -212,7 +219,7 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer()
     choice = query.data if query.data != 'none' else None
     context.user_data['config']['bottom_video'] = choice
-    logger.info(f"Config: bottom_video = {choice}")
+    logger.info(f"Config for {query.from_user.id}: bottom_video = {choice}")
 
     keyboard = [
         [
@@ -230,13 +237,12 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await query.answer()
     layout_choice = query.data
     context.user_data['config']['layout'] = layout_choice
-    logger.info(f"Config: layout = {layout_choice}")
+    logger.info(f"Config for {query.from_user.id}: layout = {layout_choice}")
 
     if layout_choice == 'main_only':
         context.user_data['config']['bottom_video'] = None # Explicitly set to None
-        logger.info("Layout is main_only, skipping bottom video selection.")
+        logger.info(f"Layout for {query.from_user.id} is main_only, skipping bottom video selection.")
         
-        # Directly ask for subtitles_type
         keyboard = [
             [
                 InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
@@ -247,13 +253,11 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
         return GET_SUBTITLES_TYPE
     else:
-        # Proceed to ask for bottom_video
         keyboard = [
             [
                 InlineKeyboardButton("GTA", callback_data='gta'),
                 InlineKeyboardButton("Minecraft", callback_data='minecraft'),
             ],
-            # [InlineKeyboardButton("Черный фон", callback_data='none')],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите brainrot видео:", reply_markup=reply_markup)
@@ -264,7 +268,7 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     context.user_data['config']['subtitles_type'] = query.data
-    logger.info(f"Config: subtitles_type = {query.data}")
+    logger.info(f"Config for {query.from_user.id}: subtitles_type = {query.data}")
 
     keyboard = [
         [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
@@ -302,7 +306,7 @@ async def get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     await query.answer()
     context.user_data['config']['capitalize_sentences'] = query.data == 'true'
-    logger.info(f"Config: capitalize_sentences = {context.user_data['config']['capitalize_sentences']}")
+    logger.info(f"Config for {query.from_user.id}: capitalize_sentences = {context.user_data['config']['capitalize_sentences']}")
 
     settings_text = format_config(context.user_data['config'])
 
@@ -323,13 +327,20 @@ async def get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return CONFIRM_CONFIG
 
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Запускает обработку после подтверждения."""
+    """Добавляет задачу в очередь после подтверждения."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(text="Конфигурация подтверждена. Начинаю обработку...")
+    
+    processing_queue = context.bot_data['processing_queue']
+    task_data = {
+        'chat_id': query.message.chat.id,
+        'user_data': context.user_data.copy()
+    }
+    await processing_queue.put(task_data)
+    
+    logger.info(f"Задача для чата {query.message.chat.id} добавлена в очередь. Задач в очереди: {processing_queue.qsize()}")
 
-    # Запускаем длительную задачу в фоновом режиме
-    asyncio.create_task(run_processing(query, context))
+    await query.edit_message_text(text=f"Ваш запрос добавлен в очередь (вы #{processing_queue.qsize()} в очереди). Вы получите уведомление, когда обработка начнется.")
 
     return ConversationHandler.END
 
@@ -354,18 +365,38 @@ async def set_commands(application: Application):
     commands = [
         BotCommand(command="start", description="Начать работу"),
         BotCommand(command="help", description="Помощь и описание"),
-        # BotCommand(command="settings", description="Настройки"),
     ]
     await application.bot.set_my_commands(commands)
+
+async def post_init_hook(application: Application):
+    """Выполняется после инициализации приложения для настройки фоновых задач."""
+    await set_commands(application)
+
+    # Создаем и сохраняем очередь в bot_data
+    processing_queue = asyncio.Queue()
+    application.bot_data['processing_queue'] = processing_queue
+
+    # Запускаем воркеры в зависимости от MAX_CONCURRENT_TASKS
+    try:
+        max_concurrent_tasks = int(os.environ.get("MAX_CONCURRENT_TASKS", "1"))
+    except ValueError:
+        max_concurrent_tasks = 1
+        logger.warning("Неверное значение для MAX_CONCURRENT_TASKS, используется значение по умолчанию: 1")
+
+    for i in range(max_concurrent_tasks):
+        asyncio.create_task(processing_worker(processing_queue, application.bot))
+        logger.info(f"Запущен воркер #{i + 1}")
+
+    logger.info(f"Очередь обработки и {max_concurrent_tasks} воркер(а/ов) успешно запущены.")
 
 def main():
     """Основная функция для запуска бота."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     if not token:
-        print("Ошибка: Токен бота не найден. Установите переменную окружения TELEGRAM_BOT_TOKEN.")
+        logger.critical("Ошибка: Токен бота не найден. Установите переменную окружения TELEGRAM_BOT_TOKEN.")
         return
 
-    application = Application.builder().token(token).post_init(set_commands).build()
+    application = Application.builder().token(token).post_init(post_init_hook).build()
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -392,7 +423,7 @@ def main():
 
     application.add_handler(conv_handler)
 
-    print("Бот запущен и готов к работе...")
+    logger.info("Бот запущен и готов к работе...")
     application.run_polling()
 
 if __name__ == "__main__":

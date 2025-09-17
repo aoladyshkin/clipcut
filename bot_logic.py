@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- 
 
 import os
 import shutil
@@ -48,6 +48,40 @@ def get_unique_output_dir(base="output"):
             Path(out_dir).mkdir(parents=True)
             return out_dir
         n += 1
+
+def gpt_gpt_prompt(shorts_number):
+    prompt = ( '''
+Ты — профессиональный редактор коротких видео, работающий на фабрике контента для TikTok, YouTube Shorts и Instagram Reels.
+Твоя задача — из транскрипта длинного видео (шоу, интервью, подкаст, стрим) выбрать максимально виральные, эмоциональные и самодостаточные фрагменты, которые могут набрать миллионы просмотров.
+''')
+    if shorts_number != 'auto':
+        prompt += f"Найди ровно {shorts_number} самых подходящих фрагментов под эти критерии.\n\n"
+    
+    prompt += ('''
+Жёсткие правила:
+
+Длина каждого клипа: от 00:10 до 01:00.
+Оптимальная длина: 20–45 секунд.
+Ни один клип не должен обрываться на середине мысли или предложения.
+Клип должен быть понятен без контекста всего интервью.
+Если потенциальный клип получился <10 секунд, обязательно расширь его за счёт соседних реплик (вперёд или назад), сохранив смысловую цельность.
+
+Приоритет отбора:
+Эмоции — смех, шутки, сарказм, конфликты, признания.
+Провокация — острые мнения, спорные формулировки, скандальные цитаты.
+Цитаты и метафоры — фразы, которые легко вынести на превью.
+Истории — мини-новеллы, анекдоты, рассказы.
+Практическая ценность — советы, лайфхаки, правила успеха.
+Сжатость — зритель должен понять суть за первые 3 секунды ролика.
+
+Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст)
+Ответ — СТРОГО JSON-массив:\n
+[{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}]
+
+В hook не используй начало транскрипта. Пиши готовый кликбейт-заголовок.
+Убедись, что каждый клип дольше 10 секунд.
+''')
+    return prompt
 
 # --- YouTube загрузка ---
 def download_video_only(url, video_path):
@@ -133,24 +167,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
     затем вызывает модель. Возвращает [{"start":"HH:MM:SS","end":"HH:MM:SS","hook":"..."}].
     """
-    prompt = (
-        "Ты — профессиональный монтажёр коротких видео для TikTok, YouTube Shorts и Reels.\n"
-        "Из транскрипта выбери цельные, виральные фрагменты длительностью 20–60 сек (оптимум 30–45).\n\n"
-    )
-
-    if shorts_number != 'auto':
-        prompt += f"Найди ровно {shorts_number} самых подходящих фрагментов под эти критерии.\n\n"
-
-    prompt += (
-        "Жёсткие правила:\n"
-        "• Фрагмент самодостаточен (начало–развитие–завершение), не дроби на мелкие фразы.\n"
-        "• Если кусок <15 сек — расширь за счёт соседних реплик.\n"
-        "• Бери острые мнения/конфликты, эмоции/сарказм/шутки, меткие цитаты, мини-истории/признания, советы/лайфхаки.\n"
-        "• В первые 3 сек — «зацепка».\n"
-        "Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст).\n"
-        "Ответ — СТРОГО JSON-массив:\n"
-        "[{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}]"
-    )
+    prompt = gpt_gpt_prompt(shorts_number)
 
     # 1) создаём Vector Store
     vs = client.vector_stores.create(name="shorts_captions_store")
@@ -174,7 +191,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         input=[{"role": "user", "content": prompt}],
         tools=[{
             "type": "file_search",
-            "vector_store_ids": [vs.id],   # <-- сюда id нашего Vector Store
+            "vector_store_ids": [vs.id],
         }],
     )
 
@@ -304,7 +321,7 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
     
     return video_canvas, subtitle_y_pos, subtitle_width
 
-def process_video_clips(config, video_path, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None, lang_code="ru"):
+def process_video_clips(config, video_path, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None):
     final_width = 720
     final_height = 1280
     futures = []
@@ -354,7 +371,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
         # --- Создание и наложение субтитров ---
         subtitle_items = get_subtitle_items(
             subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
-            faster_whisper_model, lang_code=lang_code        )
+            faster_whisper_model)
         subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
 
 
@@ -417,7 +434,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаю короткие ролики...")
     print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
-    futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback, lang_code=lang_code)
+    futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback)
     
     if futures:
         for future in futures:

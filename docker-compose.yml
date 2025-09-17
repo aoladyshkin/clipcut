@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   clipcut-bot:
+    build: .
     image: clipcut-bot
     container_name: clipcut-bot
     env_file:

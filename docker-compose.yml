@@ -9,6 +9,7 @@ services:
       - .env
     volumes:
       - ~/keepers:/app/keepers
+      - ~/fonts:/app/fonts
     restart: unless-stopped
     logging:
       driver: "json-file"

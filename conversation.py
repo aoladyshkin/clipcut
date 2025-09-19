@@ -16,7 +16,8 @@ from handlers import (
     topup_crypto,
     cancel_topup,
     send_invoice_for_stars,
-    get_crypto_amount
+    get_crypto_amount,
+    back_to_topup_method
 )
 from states import (
     GET_URL,
@@ -72,6 +73,7 @@ def get_conv_handler():
             ],
             GET_TOPUP_PACKAGE: [
                 CallbackQueryHandler(send_invoice_for_stars, pattern='^topup_\d+_\d+'),
+                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method'),
 				CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ],
             GET_CRYPTO_AMOUNT: [

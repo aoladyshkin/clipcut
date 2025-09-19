@@ -10,3 +10,7 @@ services:
     volumes:
       - ~/keepers:/app/keepers
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "30m"

@@ -405,8 +405,8 @@ async def back_to_topup_method(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.answer()
     keyboard = [
         [
-            InlineKeyboardButton("Telegram Stars", callback_data='topup_stars'),
-            InlineKeyboardButton("CryptoBot", callback_data='topup_crypto'),
+            InlineKeyboardButton("⭐️ Telegram Stars", callback_data='topup_stars'),
+            InlineKeyboardButton("💎 CryptoBot", callback_data='topup_crypto'),
         ],
         [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
     ]
@@ -431,7 +431,7 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Выберите пакет для пополнения через Telegram Stars:", reply_markup=reply_markup)
+    await query.edit_message_text("Выберите пакет для пополнения через ⭐️ Telegram Stars:", reply_markup=reply_markup)
     return GET_TOPUP_PACKAGE
 
 async def send_invoice_for_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

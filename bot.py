@@ -20,7 +20,7 @@ load_dotenv()
 
 # Состояния для диалога
 (GET_URL, GET_SUBTITLE_STYLE, GET_BOTTOM_VIDEO, 
-GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION, GET_SHORTS_NUMBER) = range(9)
+GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION, GET_SHORTS_NUMBER, GET_TOPUP_METHOD) = range(10)
 
 async def processing_worker(queue: asyncio.Queue, bot: Bot):
     """Воркер, который обрабатывает видео из очереди."""
@@ -438,6 +438,7 @@ async def set_commands(application: Application):
         BotCommand(command="start", description="Начать работу"),
         BotCommand(command="help", description="Помощь и описание"),
         BotCommand(command="balance", description="Показать баланс"),
+        BotCommand(command="topup", description="Пополнить баланс"),
     ]
     await application.bot.delete_my_commands(scope=BotCommandScopeDefault())
     await application.bot.set_my_commands(commands, scope=BotCommandScopeDefault())
@@ -560,6 +561,40 @@ async def back_to_get_capitalize(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
     return GET_CAPITALIZE
 
+async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the top-up process."""
+    keyboard = [
+        [
+            InlineKeyboardButton("Telegram Stars", callback_data='topup_stars'),
+            InlineKeyboardButton("CryptoBot", callback_data='topup_crypto'),
+        ],
+        [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Выберите способ пополнения:", reply_markup=reply_markup)
+    return GET_TOPUP_METHOD
+
+async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the Telegram Stars top-up option."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Пополнение через Telegram Stars пока не реализовано.")
+    return ConversationHandler.END
+
+async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the CryptoBot top-up option."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Пополнение через CryptoBot пока не реализовано.")
+    return ConversationHandler.END
+
+async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels the top-up process."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Пополнение отменено.")
+    return ConversationHandler.END
+
 def main():
     """Основная функция для запуска бота."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -570,7 +605,7 @@ def main():
     application = Application.builder().token(token).post_init(post_init_hook).build()
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[CommandHandler("start", start), CommandHandler("topup", topup_start)],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
             GET_AI_TRANSCRIPTION: [
@@ -606,10 +641,16 @@ def main():
                 CallbackQueryHandler(confirm_config, pattern='^confirm$'),
                 CallbackQueryHandler(cancel_conversation, pattern='^cancel$'),
                 CallbackQueryHandler(back_to_get_capitalize, pattern='^back_to_get_capitalize$')
-            ]
+            ],
+            GET_TOPUP_METHOD: [
+                CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),
+                CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
         },
         fallbacks=[CommandHandler("start", start)],
-        conversation_timeout=600 # 10 минут на диалог
+        conversation_timeout=600, # 10 минут на диалог
+        allow_reentry=True
     )
 
     application.add_handler(conv_handler)

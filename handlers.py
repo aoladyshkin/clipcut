@@ -71,8 +71,7 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
         [
             InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
             InlineKeyboardButton("Только основное видео", callback_data='main_only'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)

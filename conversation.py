@@ -16,14 +16,6 @@ from handlers import (
     topup_crypto,
     cancel_topup,
     send_invoice_for_stars,
-    back_to_get_ai_transcription,
-    back_to_shorts_number,
-    back_to_layout,
-    back_to_bottom_video,
-    back_to_subtitles_type,
-    back_to_subtitle_style,
-    back_to_get_capitalize,
-    back_to_topup_method,
     get_crypto_amount
 )
 from states import (
@@ -43,57 +35,48 @@ from states import (
 
 def get_conv_handler():
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start), CommandHandler("topup", topup_start), CallbackQueryHandler(topup_start, pattern='^topup_start$')],
+        entry_points=[
+            CommandHandler("start", start), CommandHandler("topup", topup_start), CallbackQueryHandler(topup_start, pattern='^topup_start')],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
             GET_AI_TRANSCRIPTION: [
-                CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)$'),
+                CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)'),
             ],
             GET_SHORTS_NUMBER: [
-                CallbackQueryHandler(get_shorts_number_auto, pattern='^auto$'),
+                CallbackQueryHandler(get_shorts_number_auto, pattern='^auto'),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual),
-                CallbackQueryHandler(back_to_get_ai_transcription, pattern='^back_to_get_ai_transcription$')
             ],
             GET_LAYOUT: [
-                CallbackQueryHandler(get_layout, pattern='^(top_bottom|main_only)$'),
-                CallbackQueryHandler(back_to_shorts_number, pattern='^back_to_shorts_number$')
+                CallbackQueryHandler(get_layout, pattern='^(top_bottom|main_only)'),
             ],
             GET_BOTTOM_VIDEO: [
-                CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)$'),
-                CallbackQueryHandler(back_to_layout, pattern='^back_to_layout$')
+                CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)'),
             ],
             GET_SUBTITLES_TYPE: [
-                CallbackQueryHandler(get_subtitles_type, pattern='^(word-by-word|phrases)$'),
-                CallbackQueryHandler(back_to_bottom_video, pattern='^back_to_bottom_video$'),
-                CallbackQueryHandler(back_to_layout, pattern='^back_to_layout$')
+                CallbackQueryHandler(get_subtitles_type, pattern='^(word-by-word|phrases)'),
             ],
             GET_SUBTITLE_STYLE: [
-                CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)$'),
-                CallbackQueryHandler(back_to_subtitles_type, pattern='^back_to_subtitles_type$')
+                CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)'),
             ],
             GET_CAPITALIZE: [
-                CallbackQueryHandler(get_capitalize, pattern='^(true|false)$'),
-                CallbackQueryHandler(back_to_subtitle_style, pattern='^back_to_subtitle_style$')
+                CallbackQueryHandler(get_capitalize, pattern='^(true|false)'),
             ],
             CONFIRM_CONFIG: [
-                CallbackQueryHandler(confirm_config, pattern='^confirm$'),
-                CallbackQueryHandler(cancel_conversation, pattern='^cancel$'),
-                CallbackQueryHandler(back_to_get_capitalize, pattern='^back_to_get_capitalize$')
+                CallbackQueryHandler(confirm_config, pattern='^confirm'),
+                CallbackQueryHandler(cancel_conversation, pattern='^cancel'),
             ],
             GET_TOPUP_METHOD: [
-                CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),
-                CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+                CallbackQueryHandler(topup_stars, pattern='^topup_stars'),
+                CallbackQueryHandler(topup_crypto, pattern='^topup_crypto'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ],
             GET_TOPUP_PACKAGE: [
-                CallbackQueryHandler(send_invoice_for_stars, pattern='^topup_\d+_\d+$'),
-                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method$'),
-				CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+                CallbackQueryHandler(send_invoice_for_stars, pattern='^topup_\d+_\d+'),
+				CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ],
             GET_CRYPTO_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_crypto_amount),
-                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ]
         },
         fallbacks=[CommandHandler("start", start)],

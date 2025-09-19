@@ -105,8 +105,7 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             [
                 InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
                 InlineKeyboardButton("Только основное видео", callback_data='main_only'),
-            ],
-            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
+            ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("Выберите сетку шортса:", reply_markup=reply_markup)
@@ -127,8 +126,7 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [
             InlineKeyboardButton("Да", callback_data='true'),
             InlineKeyboardButton("Нет", callback_data='false'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitles_type')]
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
@@ -146,8 +144,7 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         [
             InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
             InlineKeyboardButton("По фразе", callback_data='phrases'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -169,8 +166,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             [
                 InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
                 InlineKeyboardButton("По фразе", callback_data='phrases'),
-            ],
-            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
+            ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -180,8 +176,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             [
                 InlineKeyboardButton("GTA", callback_data='gta'),
                 InlineKeyboardButton("Minecraft", callback_data='minecraft'),
-            ],
-            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
+            ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите brainrot видео:", reply_markup=reply_markup)
@@ -191,12 +186,8 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Сохраняет тип субтитров и запрашивает стиль субтитров."""
     query = update.callback_query
     await query.answer()
-    context.user_data['config']['subtitles_type'] = query.data
-    logger.info(f"Config for {query.from_user.id}: subtitles_type = {query.data}")
-
     keyboard = [
-        [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitles_type')]
+        [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
@@ -243,8 +234,7 @@ async def get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         [
             InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
             InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitle_style')]
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -299,102 +289,6 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
         "Пришли мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики."
     )
     return GET_URL
-
-async def back_to_get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [
-            InlineKeyboardButton("Скачать с YouTube", callback_data='youtube'),
-            InlineKeyboardButton("С помощью AI (дольше, но точнее)", callback_data='ai'),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Как получить транскрипцию видео?", reply_markup=reply_markup)
-    return GET_AI_TRANSCRIPTION
-
-async def back_to_shorts_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("Авто", callback_data='auto')],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(
-        "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
-        reply_markup=reply_markup
-    )
-    return GET_SHORTS_NUMBER
-
-async def back_to_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [
-            InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
-            InlineKeyboardButton("Только основное видео", callback_data='main_only'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)
-    return GET_LAYOUT
-
-async def back_to_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    if context.user_data.get('config', {}).get('layout') == 'main_only':
-        return await back_to_layout(update, context)
-    keyboard = [
-        [
-            InlineKeyboardButton("GTA", callback_data='gta'),
-            InlineKeyboardButton("Minecraft", callback_data='minecraft'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Выберите brainrot видео:", reply_markup=reply_markup)
-    return GET_BOTTOM_VIDEO
-
-async def back_to_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [
-            InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
-            InlineKeyboardButton("По фразе", callback_data='phrases'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_bottom_video')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
-    return GET_SUBTITLES_TYPE
-
-async def back_to_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitles_type')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
-    return GET_SUBTITLE_STYLE
-
-async def back_to_get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    query = update.callback_query
-    await query.answer()
-    keyboard = [
-        [
-            InlineKeyboardButton("Да", callback_data='true'),
-            InlineKeyboardButton("Нет", callback_data='false'),
-        ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitle_style')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
-    return GET_CAPITALIZE
 
 async def back_to_topup_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Goes back to the top-up method selection."""

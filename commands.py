@@ -76,8 +76,8 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     """Starts the top-up process."""
     keyboard = [
         [
-            InlineKeyboardButton("Telegram Stars", callback_data='topup_stars'),
-            InlineKeyboardButton("CryptoBot", callback_data='topup_crypto'),
+            InlineKeyboardButton("⭐️ Telegram Stars", callback_data='topup_stars'),
+            InlineKeyboardButton("💎 CryptoBot", callback_data='topup_crypto'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)

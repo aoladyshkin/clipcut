@@ -5,6 +5,13 @@ from telegram.ext import ContextTypes, ConversationHandler
 from database import get_user, add_to_user_balance
 from states import GET_URL, GET_TOPUP_METHOD
 
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
     user_id = update.effective_user.id
@@ -81,7 +88,6 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await update.message.reply_text("Выберите способ пополнения:", reply_markup=reply_markup)
     return GET_TOPUP_METHOD
 
-import os
 
 async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Adds a specified amount of shorts to a user's balance."""

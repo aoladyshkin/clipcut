@@ -27,6 +27,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         logger.info("User is an admin, adding /addshorts command.")
         base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
     
+    await context.bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
 
     if balance <= 0:
@@ -49,7 +50,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "Доступные команды:\n"
         "/start - Начать работу с ботом\n"
         "/help - Показать это сообщение\n"
-        "/balance - Показать текущий баланс"
+        "/balance - Показать текущий баланс\n"
+        "/topup - Пополнить баланс"
     )
     await update.message.reply_text(help_text)
 

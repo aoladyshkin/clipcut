@@ -46,5 +46,17 @@ def update_user_balance(user_id: int, shorts_generated: int):
         )
         conn.commit()
 
+def add_to_user_balance(user_id: int, amount: int):
+    """
+    Добавляет указанное количество к балансу пользователя.
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET balance = balance + ? WHERE user_id = ?",
+            (amount, user_id)
+        )
+        conn.commit()
+
 # Убедимся, что база данных инициализируется при запуске
 initialize_database()

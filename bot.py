@@ -1,14 +1,14 @@
 import os
 import logging
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, Bot, BotCommandScopeDefault
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, Bot, BotCommandScopeDefault, LabeledPrice
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes, PreCheckoutQueryHandler
 import asyncio
 from typing import Dict
 
 # Импортируем основную функцию из вашего скрипта
 from bot_logic import main as process_video
-from database import get_user, update_user_balance
+from database import get_user, update_user_balance, add_to_user_balance
 
 # Настройка логирования
 logging.basicConfig(
@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Состояния для диалога
-(GET_URL, GET_SUBTITLE_STYLE, GET_BOTTOM_VIDEO, 
-GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION, GET_SHORTS_NUMBER, GET_TOPUP_METHOD) = range(10)
+(GET_URL, GET_SUBTITLE_STYLE, GET_BOTTOM_VIDEO,
+ GET_LAYOUT, GET_SUBTITLES_TYPE, GET_CAPITALIZE, CONFIRM_CONFIG, GET_AI_TRANSCRIPTION, GET_SHORTS_NUMBER, GET_TOPUP_METHOD, GET_TOPUP_PACKAGE) = range(11)
 
 async def processing_worker(queue: asyncio.Queue, bot: Bot):
     """Воркер, который обрабатывает видео из очереди."""
@@ -561,6 +561,21 @@ async def back_to_get_capitalize(update: Update, context: ContextTypes.DEFAULT_T
     await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
     return GET_CAPITALIZE
 
+async def back_to_topup_method(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Goes back to the top-up method selection."""
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [
+            InlineKeyboardButton("Telegram Stars", callback_data='topup_stars'),
+            InlineKeyboardButton("CryptoBot", callback_data='topup_crypto'),
+        ],
+        [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
+    return GET_TOPUP_METHOD
+
 async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the top-up process."""
     keyboard = [
@@ -575,11 +590,68 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return GET_TOPUP_METHOD
 
 async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handles the Telegram Stars top-up option."""
+    """Shows the available packages for Telegram Stars top-up."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Пополнение через Telegram Stars пока не реализовано.")
+    keyboard = [
+        [InlineKeyboardButton("10 шортсов - 100 ⭐️", callback_data='topup_10_100')],
+        [InlineKeyboardButton("25 шортсов - 225 ⭐️", callback_data='topup_25_225')],
+        [InlineKeyboardButton("50 шортсов - 400 ⭐️", callback_data='topup_50_400')],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите пакет для пополнения через Telegram Stars:", reply_markup=reply_markup)
+    return GET_TOPUP_PACKAGE
+
+async def send_invoice_for_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Sends an invoice for the selected package."""
+    query = update.callback_query
+    await query.answer()
+    
+    package = query.data.split('_')
+    shorts_amount = int(package[1])
+    stars_amount = int(package[2])
+    
+    chat_id = update.effective_chat.id
+    title = f"Пополнение баланса на {shorts_amount} шортсов"
+    description = f"Пакет '{shorts_amount} шортсов' для генерации видео."
+    payload = f"topup-{chat_id}-{shorts_amount}-{stars_amount}"
+    currency = "XTR"
+    prices = [LabeledPrice(f"{shorts_amount} шортсов", stars_amount)]
+
+    await context.bot.send_invoice(
+        chat_id=chat_id,
+        title=title,
+        description=description,
+        payload=payload,
+        provider_token=None,  # Not needed for Telegram Stars
+        currency=currency,
+        prices=prices
+    )
     return ConversationHandler.END
+
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Answers the PreCheckoutQuery."""
+    query = update.pre_checkout_query
+    if query.invoice_payload.startswith('topup-'):
+        await query.answer(ok=True)
+    else:
+        await query.answer(ok=False, error_message="Что-то пошло не так...")
+
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Confirms the successful payment."""
+    payment_info = update.message.successful_payment
+    payload_parts = payment_info.invoice_payload.split('-')
+    user_id = int(payload_parts[1])
+    shorts_amount = int(payload_parts[2])
+
+    add_to_user_balance(user_id, shorts_amount)
+    _, new_balance, _ = get_user(user_id)
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=f"Оплата прошла успешно! Ваш баланс пополнен на {shorts_amount} шортсов. \nНовый баланс: {new_balance} шортсов."
+    )
 
 async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the CryptoBot top-up option."""
@@ -647,6 +719,10 @@ def main():
                 CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
+            GET_TOPUP_PACKAGE: [
+                CallbackQueryHandler(send_invoice_for_stars, pattern='^topup_\d+_\d+$'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ]
         },
         fallbacks=[CommandHandler("start", start)],
         conversation_timeout=600, # 10 минут на диалог
@@ -656,6 +732,8 @@ def main():
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 
     logger.info("Бот запущен и готов к работе...")
     application.run_polling()

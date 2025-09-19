@@ -22,8 +22,8 @@ import time
 import tempfile
 import re
 from faster_whisper import WhisperModel
-from transcription import get_transcript_segments_and_file, get_audio_duration
-from subtitles import create_subtitle_clips, get_subtitle_items
+from processing.transcription import get_transcript_segments_and_file, get_audio_duration
+from processing.subtitles import create_subtitle_clips, get_subtitle_items
 
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
@@ -418,7 +418,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     if not transcript_segments:
         print("Не удалось получить транскрипцию.")
-        return [] # Return empty list for consistency
+        return 0
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
@@ -429,7 +429,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         print("GPT не смог выделить подходящие отрезки для шортсов.")
         if status_callback:
             status_callback("GPT не смог выделить подходящие отрезки для шортсов.")
-        return [] # Return empty list for consistency
+        return 0
     if status_callback:
         status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаю короткие ролики...")
     print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
@@ -449,7 +449,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shutil.rmtree(out_dir)
         print(f"🗑️ Папка {out_dir} удалена.")
 
-    return [] # No longer returning a list of results, but an empty list for consistency
+    return len(shorts_timecodes)
 
 
 if __name__ == "__main__":

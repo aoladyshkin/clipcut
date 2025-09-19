@@ -37,6 +37,7 @@ The script requires API keys and other configuration to be set as environment va
 ```
 OPENAI_API_KEY="your_openai_key"
 TELEGRAM_BOT_TOKEN="your_telegram_bot_token"
+CRYPTO_BOT_TOKEN="your_cryptobot_token"
 DELETE_OUTPUT_AFTER_SENDING="true"
 ```
 

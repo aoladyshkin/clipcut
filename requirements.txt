@@ -7,3 +7,5 @@ faster-whisper
 ctranslate2
 python-dotenv
 pytubefix
+aiocryptopay
+python-telegram-bot[job-queue]

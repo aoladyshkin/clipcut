@@ -43,7 +43,7 @@ from states import (
 
 def get_conv_handler():
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start), CommandHandler("topup", topup_start)],
+        entry_points=[CommandHandler("start", start), CommandHandler("topup", topup_start), CallbackQueryHandler(topup_start, pattern='^topup_start$')],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
             GET_AI_TRANSCRIPTION: [

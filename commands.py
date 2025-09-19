@@ -59,7 +59,11 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """Отправляет текущий баланс пользователя."""
     user_id = update.effective_user.id
     _, balance, _ = get_user(user_id)
-    await update.message.reply_text(f"Ваш текущий баланс: {balance} шортсов.")
+    keyboard = [
+        [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(f"Ваш текущий баланс: {balance} шортсов.", reply_markup=reply_markup)
 
 async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the top-up process."""
@@ -71,7 +75,11 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выберите способ пополнения:", reply_markup=reply_markup)
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
+    else:
+        await update.message.reply_text("Выберите способ пополнения:", reply_markup=reply_markup)
     return GET_TOPUP_METHOD
 
 import os

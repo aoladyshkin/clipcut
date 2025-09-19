@@ -47,12 +47,6 @@ async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     context.user_data['config']['force_ai_transcription'] = query.data == 'ai'
-    logger.info(f"Config for {query.from_user.id}: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
-
-    keyboard = [
-        [InlineKeyboardButton("Авто", callback_data='auto')],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
-    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
         "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",

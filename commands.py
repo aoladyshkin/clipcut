@@ -78,7 +78,8 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         [
             InlineKeyboardButton("⭐️ Telegram Stars", callback_data='topup_stars'),
             InlineKeyboardButton("💎 CryptoBot", callback_data='topup_crypto'),
-        ]
+        ],
+        [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.callback_query:

@@ -492,5 +492,5 @@ async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Cancels the top-up process."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Пополнение отменено.")
+    await query.delete_message()
     return ConversationHandler.END

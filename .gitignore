@@ -17,3 +17,6 @@ fonts/
 
 # Large media files
 venv/
+
+# Database file
+clipcut.db

@@ -47,6 +47,11 @@ async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     context.user_data['config']['force_ai_transcription'] = query.data == 'ai'
+    logger.info(f"Config for {query.from_user.id}: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
+
+    keyboard = [
+        [InlineKeyboardButton("Авто", callback_data='auto')]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
         "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
@@ -67,7 +72,7 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
             InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
             InlineKeyboardButton("Только основное видео", callback_data='main_only'),
         ],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)
@@ -102,12 +107,11 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
                 InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
                 InlineKeyboardButton("Только основное видео", callback_data='main_only'),
             ],
-            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
+            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("Выберите сетку шортса:", reply_markup=reply_markup)
         return GET_LAYOUT
-
     except ValueError:
         msg = await update.message.reply_text("Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
         context.user_data['error_message_id'] = msg.message_id
@@ -167,7 +171,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
                 InlineKeyboardButton("По фразе", callback_data='phrases'),
             ],
-            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
+            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -178,7 +182,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 InlineKeyboardButton("GTA", callback_data='gta'),
                 InlineKeyboardButton("Minecraft", callback_data='minecraft'),
             ],
-            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
+            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите brainrot видео:", reply_markup=reply_markup)

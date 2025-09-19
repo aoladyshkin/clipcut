@@ -8,7 +8,7 @@ import asyncio
 from conversation import get_conv_handler
 from commands import help_command, balance_command
 from handlers import precheckout_callback, successful_payment_callback
-from bot_logic import main as process_video
+from processing.bot_logic import main as process_video
 
 # Настройка логирования
 logging.basicConfig(

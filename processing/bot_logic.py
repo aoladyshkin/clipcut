@@ -22,8 +22,8 @@ import time
 import tempfile
 import re
 from faster_whisper import WhisperModel
-from transcription import get_transcript_segments_and_file, get_audio_duration
-from subtitles import create_subtitle_clips, get_subtitle_items
+from processing.transcription import get_transcript_segments_and_file, get_audio_duration
+from processing.subtitles import create_subtitle_clips, get_subtitle_items
 
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))

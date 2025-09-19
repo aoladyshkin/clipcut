@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
-from bot_logic import main as process_video
+from processing.bot_logic import main as process_video
 from states import (
     GET_URL,
     GET_SUBTITLE_STYLE,

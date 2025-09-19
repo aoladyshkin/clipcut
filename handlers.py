@@ -16,7 +16,8 @@ from states import (
     GET_AI_TRANSCRIPTION,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
-    GET_TOPUP_PACKAGE
+    GET_TOPUP_PACKAGE,
+    GET_CRYPTO_AMOUNT
 )
 
 logger = logging.getLogger(__name__)
@@ -413,16 +414,22 @@ async def back_to_topup_method(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
     return GET_TOPUP_METHOD
 
+from config import STARS_PACKAGES
+
 async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Shows the available packages for Telegram Stars top-up."""
     query = update.callback_query
     await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("10 шортсов - 100 ⭐️", callback_data='topup_10_100')],
-        [InlineKeyboardButton("25 шортсов - 225 ⭐️", callback_data='topup_25_225')],
-        [InlineKeyboardButton("50 шортсов - 400 ⭐️", callback_data='topup_50_400')],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')]
-    ]
+
+    keyboard = []
+    for package in STARS_PACKAGES:
+        shorts = package['shorts']
+        stars = package['stars']
+        button = InlineKeyboardButton(f"{shorts} шортсов - {stars} ⭐️", callback_data=f'topup_{shorts}_{stars}')
+        keyboard.append([button])
+    
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("Выберите пакет для пополнения через Telegram Stars:", reply_markup=reply_markup)
     return GET_TOPUP_PACKAGE
@@ -478,11 +485,116 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     )
 
 async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handles the CryptoBot top-up option."""
+    """Asks the user for the amount of shorts to buy with crypto."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Пополнение через CryptoBot пока не реализовано.")
-    return ConversationHandler.END
+
+    keyboard = [
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        "Введите количество шортсов, которое вы хотите купить:",
+        reply_markup=reply_markup
+    )
+    return GET_CRYPTO_AMOUNT
+
+from aiocryptopay import AioCryptoPay, Networks
+
+from config import CRYPTO_PRICE_PER_SHORT, CRYPTO_DISCOUNTS
+
+async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the amount of shorts to buy with crypto."""
+    try:
+        amount = int(update.message.text)
+        if amount <= 0:
+            await update.message.reply_text("Пожалуйста, введите положительное число.")
+            return GET_CRYPTO_AMOUNT
+
+        # Tiered pricing logic
+        discount = 0
+        for threshold, discount_value in sorted(CRYPTO_DISCOUNTS.items(), reverse=True):
+            if amount >= threshold:
+                discount = discount_value
+                break
+
+        price_per_short = CRYPTO_PRICE_PER_SHORT * (1 - discount)
+        total_price = round(amount * price_per_short, 2)
+
+        # --- CryptoBot Integration (Real) ---
+        crypto = AioCryptoPay(token=os.environ.get("CRYPTO_BOT_TOKEN"), network=Networks.MAIN_NET)
+        invoice = await crypto.create_invoice(asset='USDT', amount=total_price)
+        await crypto.close()
+
+        payment_url = invoice.bot_invoice_url
+        invoice_id = invoice.invoice_id
+
+        payload = f"check_crypto:{update.effective_user.id}:{amount}:{invoice_id}"
+
+        keyboard = [
+            [InlineKeyboardButton("Оплатить", url=payment_url)],
+            [InlineKeyboardButton("Проверить платёж", callback_data=payload)],
+            [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await update.message.reply_text(
+            f"Вы покупаете {amount} шортсов за {total_price} USDT. Нажмите кнопку ниже, чтобы оплатить.",
+            reply_markup=reply_markup
+        )
+        
+        return ConversationHandler.END
+
+    except ValueError:
+        await update.message.reply_text("Пожалуйста, введите целое число.")
+        return GET_CRYPTO_AMOUNT
+
+async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Checks the crypto payment and updates the balance."""
+    query = update.callback_query
+    await query.answer()
+
+    try:
+        identifier, user_id_str, amount_str, invoice_id = query.data.split(':')
+        user_id = int(user_id_str)
+        amount = int(amount_str)
+
+        try:
+            # --- CryptoBot Integration (Real) ---
+            crypto = AioCryptoPay(token=os.environ.get("CRYPTO_BOT_TOKEN"), network=Networks.MAIN_NET)
+            invoices = await crypto.get_invoices(invoice_ids=invoice_id)
+            await crypto.close()
+
+            if invoices and invoices[0].status == 'paid':
+                # Delete previous "payment not found" messages
+                if 'payment_not_found_messages' in context.user_data:
+                    for message_id in context.user_data['payment_not_found_messages']:
+                        try:
+                            await context.bot.delete_message(chat_id=user_id, message_id=message_id)
+                        except Exception as e:
+                            logger.warning(f"Could not delete message {message_id}: {e}")
+                    del context.user_data['payment_not_found_messages']
+
+                add_to_user_balance(user_id, amount)
+                _, new_balance, _ = get_user(user_id)
+
+                await query.edit_message_text(
+                    f"Оплата прошла успешно! Ваш баланс пополнен на {amount} шортсов. \nНовый баланс: {new_balance} шортсов."
+                )
+            else:
+                msg = await context.bot.send_message(chat_id=user_id, text="Платёж не найден или еще не прошел. Попробуйте проверить еще раз через несколько секунд.")
+                if 'payment_not_found_messages' not in context.user_data:
+                    context.user_data['payment_not_found_messages'] = []
+                context.user_data['payment_not_found_messages'].append(msg.message_id)
+
+        except Exception as e:
+            logger.error(f"Error checking crypto payment with aiocryptopay: {e}", exc_info=True)
+            await query.edit_message_text("Произошла ошибка при связи с платежной системой. Пожалуйста, попробуйте еще раз позже.")
+
+    except (ValueError, IndexError) as e:
+        logger.error(f"Error checking crypto payment: {e}", exc_info=True)
+        await query.edit_message_text("Произошла ошибка при проверке платежа. Пожалуйста, попробуйте еще раз.")
 
 async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels the top-up process."""

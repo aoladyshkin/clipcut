@@ -24,6 +24,7 @@ from handlers import (
     back_to_subtitle_style,
     back_to_get_capitalize,
     back_to_topup_method,
+    get_crypto_amount
 )
 from states import (
     GET_URL,
@@ -36,7 +37,8 @@ from states import (
     GET_AI_TRANSCRIPTION,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
-    GET_TOPUP_PACKAGE
+    GET_TOPUP_PACKAGE,
+    GET_CRYPTO_AMOUNT
 )
 
 def get_conv_handler():
@@ -87,6 +89,11 @@ def get_conv_handler():
                 CallbackQueryHandler(send_invoice_for_stars, pattern='^topup_\d+_\d+$'),
                 CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method$'),
 				CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
+            GET_CRYPTO_AMOUNT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_crypto_amount),
+                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method$'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ]
         },
         fallbacks=[CommandHandler("start", start)],

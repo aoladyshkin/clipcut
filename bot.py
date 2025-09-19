@@ -2,12 +2,12 @@ import os
 import logging
 from dotenv import load_dotenv
 from telegram import Update, BotCommand, Bot, BotCommandScopeDefault
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler
 import asyncio
 
 from conversation import get_conv_handler
 from commands import help_command, balance_command
-from handlers import precheckout_callback, successful_payment_callback
+from handlers import precheckout_callback, successful_payment_callback, check_crypto_payment
 from processing.bot_logic import main as process_video
 
 # Настройка логирования
@@ -154,9 +154,10 @@ def main():
 
     conv_handler = get_conv_handler()
 
-    application.add_handler(conv_handler)
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(conv_handler)
+    application.add_handler(CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 

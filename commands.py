@@ -1,16 +1,33 @@
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
-from database import get_user
+from database import get_user, add_to_user_balance
 from states import GET_URL, GET_TOPUP_METHOD
-
-logger = logging.getLogger(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
     user_id = update.effective_user.id
     user = get_user(user_id)
     _, balance, _ = user
+
+    # Set commands for the user
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    logger.info(f"Admin IDs: {admin_ids}")
+    logger.info(f"User ID: {user_id}")
+
+    base_commands = [
+        BotCommand(command="start", description="Начать работу"),
+        BotCommand(command="help", description="Помощь и описание"),
+        BotCommand(command="balance", description="Показать баланс"),
+        BotCommand(command="topup", description="Пополнить баланс"),
+    ]
+    if str(user_id) in admin_ids:
+        logger.info("User is an admin, adding /addshorts command.")
+        base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
+    
+    await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
 
     if balance <= 0:
         await update.message.reply_text("У вас закончились шортсы. Пожалуйста, пополните баланс.")
@@ -54,3 +71,28 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Выберите способ пополнения:", reply_markup=reply_markup)
     return GET_TOPUP_METHOD
+
+import os
+
+async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Adds a specified amount of shorts to a user's balance."""
+    admin_ids = os.environ.get("ADMIN_USER_IDS", "").split(',')
+    if str(update.effective_user.id) not in admin_ids:
+        return
+
+    try:
+        user_id_str, amount_str = context.args
+        user_id = int(user_id_str)
+        amount = int(amount_str)
+
+        if amount <= 0:
+            await update.message.reply_text("Количество шортсов должно быть положительным числом.")
+            return
+
+        add_to_user_balance(user_id, amount)
+        _, new_balance, _ = get_user(user_id)
+
+        await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} шортсов. Новый баланс: {new_balance}.")
+
+    except (ValueError, IndexError):
+        await update.message.reply_text("Неверный формат команды. Используйте: /addshorts <user_id> <amount>")

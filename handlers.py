@@ -481,7 +481,8 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
 
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"Оплата прошла успешно! Ваш баланс пополнен на {shorts_amount} шортсов. \nНовый баланс: {new_balance} шортсов."
+        text=f"✅ Оплата прошла успешно! Ваш баланс <b> пополнен на {shorts_amount} шортс.</b> \n\n Новый баланс: <b>{new_balance} шортс.</b>",
+        parse_mode="HTML"
     )
 
 async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

@@ -1,12 +1,12 @@
 import os
 import logging
 from dotenv import load_dotenv
-from telegram import Update, BotCommand, Bot, BotCommandScopeDefault
+from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler
 import asyncio
 
 from conversation import get_conv_handler
-from commands import help_command, balance_command
+from commands import help_command, balance_command, add_shorts_command
 from handlers import precheckout_callback, successful_payment_callback, check_crypto_payment
 from processing.bot_logic import main as process_video
 
@@ -111,21 +111,8 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             text=f"Произошла критическая ошибка во время обработки видео: {e}"
         )
 
-async def set_commands(application: Application):
-    commands = [
-        BotCommand(command="start", description="Начать работу"),
-        BotCommand(command="help", description="Помощь и описание"),
-        BotCommand(command="balance", description="Показать баланс"),
-        BotCommand(command="topup", description="Пополнить баланс"),
-    ]
-    await application.bot.delete_my_commands(scope=BotCommandScopeDefault())
-    await application.bot.set_my_commands(commands, scope=BotCommandScopeDefault())
-    logger.info("Команды бота успешно установлены.")
-
 async def post_init_hook(application: Application):
     """Выполняется после инициализации приложения для настройки фоновых задач."""
-    await set_commands(application)
-
     # Создаем и сохраняем очередь в bot_data
     processing_queue = asyncio.Queue()
     application.bot_data['processing_queue'] = processing_queue
@@ -157,6 +144,7 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("addshorts", add_shorts_command))
     application.add_handler(CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))

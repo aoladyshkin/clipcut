@@ -1,13 +1,14 @@
 import os
 import logging
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, Bot
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, Bot, BotCommandScopeDefault
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
 import asyncio
 from typing import Dict
 
 # Импортируем основную функцию из вашего скрипта
 from bot_logic import main as process_video
+from database import get_user, update_user_balance
 
 # Настройка логирования
 logging.basicConfig(
@@ -82,7 +83,8 @@ async def run_processing(chat_id: int, user_data: Dict, bot: Bot):
 
     try:
         delete_output = os.environ.get("DELETE_OUTPUT_AFTER_SENDING", "false").lower() == "true"
-        await asyncio.to_thread(
+        
+        shorts_generated_count = await asyncio.to_thread(
             process_video,
             user_data['url'],
             user_data['config'],
@@ -91,10 +93,20 @@ async def run_processing(chat_id: int, user_data: Dict, bot: Bot):
             delete_output
         )
 
-        await bot.send_message(
-            chat_id=chat_id,
-            text="Обработка завершена! Все видео отправлены."
-        )
+        if shorts_generated_count > 0:
+            update_user_balance(chat_id, shorts_generated_count)
+            logger.info(f"Баланс пользователя {chat_id} обновлен. Списано {shorts_generated_count} шортсов.")
+            _, new_balance, _ = get_user(chat_id)
+            await bot.send_message(
+                chat_id=chat_id,
+                text=f"Обработка завершена! Ваш новый баланс: {new_balance} шортсов."
+            )
+        else:
+            await bot.send_message(
+                chat_id=chat_id,
+                text="Обработка завершена, но не было создано ни одного шортса. Ваш баланс не изменился."
+            )
+
 
     except Exception as e:
         logger.error(f"Ошибка при обработке видео для чата {chat_id}: {e}", exc_info=True)
@@ -106,10 +118,20 @@ async def run_processing(chat_id: int, user_data: Dict, bot: Bot):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
+    user_id = update.effective_user.id
+    user = get_user(user_id)
+    _, balance, _ = user
+
+    if balance <= 0:
+        await update.message.reply_text("У вас закончились шортсы. Пожалуйста, пополните баланс.")
+        return ConversationHandler.END
+
     context.user_data.clear()
     context.user_data['config'] = {}
+    context.user_data['balance'] = balance
+    
     await update.message.reply_text(
-        "Привет! Пришли мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики."
+        f"Привет! У вас на балансе {balance} шортсов. \nПришли мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики."
     )
     return GET_URL
 
@@ -141,9 +163,8 @@ async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.info(f"Config for {query.from_user.id}: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
 
     keyboard = [
-        [
-            InlineKeyboardButton("Авто", callback_data='auto'),
-        ]
+        [InlineKeyboardButton("Авто", callback_data='auto')],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
@@ -164,7 +185,8 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
         [
             InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
             InlineKeyboardButton("Только основное видео", callback_data='main_only'),
-        ]
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)
@@ -175,10 +197,22 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
     """Сохраняет число шортсов и запрашивает сетку."""
     try:
         number = int(update.message.text)
+        balance = context.user_data.get('balance', 0)
+
+        if 'error_message_id' in context.user_data:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data['error_message_id'])
+            del context.user_data['error_message_id']
+
         if number <= 0:
-            await update.message.reply_text("Пожалуйста, введите положительное число.")
+            msg = await update.message.reply_text("Пожалуйста, введите положительное число.")
+            context.user_data['error_message_id'] = msg.message_id
             return GET_SHORTS_NUMBER
         
+        if number > balance:
+            msg = await update.message.reply_text(f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.")
+            context.user_data['error_message_id'] = msg.message_id
+            return GET_SHORTS_NUMBER
+
         context.user_data['config']['shorts_number'] = number
         logger.info(f"Config for {update.effective_user.id}: shorts_number = {number}")
 
@@ -186,14 +220,16 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             [
                 InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
                 InlineKeyboardButton("Только основное видео", callback_data='main_only'),
-            ]
+            ],
+            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text("Выберите сетку шортса:", reply_markup=reply_markup)
         return GET_LAYOUT
 
     except ValueError:
-        await update.message.reply_text("Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
+        msg = await update.message.reply_text("Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
+        context.user_data['error_message_id'] = msg.message_id
         return GET_SHORTS_NUMBER
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -207,7 +243,8 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [
             InlineKeyboardButton("Да", callback_data='true'),
             InlineKeyboardButton("Нет", callback_data='false'),
-        ]
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitles_type')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
@@ -225,7 +262,8 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         [
             InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
             InlineKeyboardButton("По фразе", callback_data='phrases'),
-        ]
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -247,7 +285,8 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             [
                 InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
                 InlineKeyboardButton("По фразе", callback_data='phrases'),
-            ]
+            ],
+            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -258,6 +297,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 InlineKeyboardButton("GTA", callback_data='gta'),
                 InlineKeyboardButton("Minecraft", callback_data='minecraft'),
             ],
+            [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите brainrot видео:", reply_markup=reply_markup)
@@ -272,12 +312,13 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     keyboard = [
         [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitles_type')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
     return GET_SUBTITLE_STYLE
 
-def format_config(config):
+def format_config(config, balance=None):
     layout_map = {'top_bottom': 'Осн. видео + brainrot', 'main_only': 'Только основное видео'}
     video_map = {'gta': 'GTA', 'minecraft': 'Minecraft', None: 'Нет'}
     sub_type_map = {'word-by-word': 'По одному слову', 'phrases': 'По фразе'}
@@ -290,7 +331,10 @@ def format_config(config):
     else:
         shorts_number_text = 'Авто'
 
+    balance_text = f"<b>Ваш баланс</b>: {balance} шортсов\n" if balance is not None else ""
+
     settings_text = (
+        f"{balance_text}"
         f"<b>Количество шортсов</b>: {shorts_number_text}\n"
         f"<b>Способ транскрипции</b>: {transcription_map.get(config.get('force_ai_transcription'), 'Не выбрано')}\n"
         f"<b>Сетка</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
@@ -308,13 +352,15 @@ async def get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data['config']['capitalize_sentences'] = query.data == 'true'
     logger.info(f"Config for {query.from_user.id}: capitalize_sentences = {context.user_data['config']['capitalize_sentences']}")
 
-    settings_text = format_config(context.user_data['config'])
+    balance = context.user_data.get('balance')
+    settings_text = format_config(context.user_data['config'], balance)
 
     keyboard = [
         [
             InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
             InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
-        ]
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitle_style')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -330,7 +376,22 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Добавляет задачу в очередь после подтверждения."""
     query = update.callback_query
     await query.answer()
-    
+
+    balance = context.user_data.get('balance', 0)
+    shorts_number = context.user_data.get('config', {}).get('shorts_number', 'auto')
+
+    if isinstance(shorts_number, int):
+        if balance < shorts_number:
+            await query.edit_message_text(
+                f"На вашем балансе ({balance}) недостаточно шортсов для генерации {shorts_number} видео. Пожалуйста, пополните баланс или выберите меньшее количество."
+            )
+            return ConversationHandler.END
+    elif shorts_number == 'auto':
+        # В режиме "авто" мы не знаем точное количество. 
+        # Можно либо списать максимум, либо проверять по факту.
+        # Пока что просто пропускаем, если баланс > 0, что уже проверено в start.
+        pass
+
     processing_queue = context.bot_data['processing_queue']
     task_data = {
         'chat_id': query.message.chat.id,
@@ -355,18 +416,32 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     return GET_URL
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Отменяет и завершает диалог."""
-    await update.message.reply_text("Действие отменено.")
-    context.user_data.clear()
-    return ConversationHandler.END
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Отправляет сообщение с помощью и списком команд."""
+    help_text = (
+        "Этот бот создает короткие вирусные видео из YouTube роликов.\n\n"
+        "Доступные команды:\n"
+        "/start - Начать работу с ботом\n"
+        "/help - Показать это сообщение\n"
+        "/balance - Показать текущий баланс"
+    )
+    await update.message.reply_text(help_text)
+
+async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Отправляет текущий баланс пользователя."""
+    user_id = update.effective_user.id
+    _, balance, _ = get_user(user_id)
+    await update.message.reply_text(f"Ваш текущий баланс: {balance} шортсов.")
 
 async def set_commands(application: Application):
     commands = [
         BotCommand(command="start", description="Начать работу"),
         BotCommand(command="help", description="Помощь и описание"),
+        BotCommand(command="balance", description="Показать баланс"),
     ]
-    await application.bot.set_my_commands(commands)
+    await application.bot.delete_my_commands(scope=BotCommandScopeDefault())
+    await application.bot.set_my_commands(commands, scope=BotCommandScopeDefault())
+    logger.info("Команды бота успешно установлены.")
 
 async def post_init_hook(application: Application):
     """Выполняется после инициализации приложения для настройки фоновых задач."""
@@ -389,6 +464,102 @@ async def post_init_hook(application: Application):
 
     logger.info(f"Очередь обработки и {max_concurrent_tasks} воркер(а/ов) успешно запущены.")
 
+async def back_to_get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [
+            InlineKeyboardButton("Скачать с YouTube", callback_data='youtube'),
+            InlineKeyboardButton("С помощью AI (дольше, но точнее)", callback_data='ai'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Как получить транскрипцию видео?", reply_markup=reply_markup)
+    return GET_AI_TRANSCRIPTION
+
+async def back_to_shorts_number(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("Авто", callback_data='auto')],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_get_ai_transcription')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
+        reply_markup=reply_markup
+    )
+    return GET_SHORTS_NUMBER
+
+async def back_to_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [
+            InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
+            InlineKeyboardButton("Только основное видео", callback_data='main_only'),
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_shorts_number')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)
+    return GET_LAYOUT
+
+async def back_to_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    if context.user_data.get('config', {}).get('layout') == 'main_only':
+        return await back_to_layout(update, context)
+    keyboard = [
+        [
+            InlineKeyboardButton("GTA", callback_data='gta'),
+            InlineKeyboardButton("Minecraft", callback_data='minecraft'),
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_layout')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text="Выберите brainrot видео:", reply_markup=reply_markup)
+    return GET_BOTTOM_VIDEO
+
+async def back_to_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [
+            InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
+            InlineKeyboardButton("По фразе", callback_data='phrases'),
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_bottom_video')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
+    return GET_SUBTITLES_TYPE
+
+async def back_to_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitles_type')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
+    return GET_SUBTITLE_STYLE
+
+async def back_to_get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    keyboard = [
+        [
+            InlineKeyboardButton("Да", callback_data='true'),
+            InlineKeyboardButton("Нет", callback_data='false'),
+        ],
+        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_subtitle_style')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
+    return GET_CAPITALIZE
+
 def main():
     """Основная функция для запуска бота."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -402,26 +573,48 @@ def main():
         entry_points=[CommandHandler("start", start)],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
-            GET_AI_TRANSCRIPTION: [CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)')],
-            GET_SHORTS_NUMBER: [
-                CallbackQueryHandler(get_shorts_number_auto, pattern='^auto'),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual)
+            GET_AI_TRANSCRIPTION: [
+                CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)$'),
             ],
-            GET_SUBTITLE_STYLE: [CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)')],
-            GET_BOTTOM_VIDEO: [CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)')],
-            GET_LAYOUT: [CallbackQueryHandler(get_layout, pattern='^(top_bottom|main_only)')],
-            GET_SUBTITLES_TYPE: [CallbackQueryHandler(get_subtitles_type, pattern='^(word-by-word|phrases)')],
-            GET_CAPITALIZE: [CallbackQueryHandler(get_capitalize, pattern='^(true|false)')],
+            GET_SHORTS_NUMBER: [
+                CallbackQueryHandler(get_shorts_number_auto, pattern='^auto$'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual),
+                CallbackQueryHandler(back_to_get_ai_transcription, pattern='^back_to_get_ai_transcription$')
+            ],
+            GET_LAYOUT: [
+                CallbackQueryHandler(get_layout, pattern='^(top_bottom|main_only)$'),
+                CallbackQueryHandler(back_to_shorts_number, pattern='^back_to_shorts_number$')
+            ],
+            GET_BOTTOM_VIDEO: [
+                CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)$'),
+                CallbackQueryHandler(back_to_layout, pattern='^back_to_layout$')
+            ],
+            GET_SUBTITLES_TYPE: [
+                CallbackQueryHandler(get_subtitles_type, pattern='^(word-by-word|phrases)$'),
+                CallbackQueryHandler(back_to_bottom_video, pattern='^back_to_bottom_video$'),
+                CallbackQueryHandler(back_to_layout, pattern='^back_to_layout$')
+            ],
+            GET_SUBTITLE_STYLE: [
+                CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)$'),
+                CallbackQueryHandler(back_to_subtitles_type, pattern='^back_to_subtitles_type$')
+            ],
+            GET_CAPITALIZE: [
+                CallbackQueryHandler(get_capitalize, pattern='^(true|false)$'),
+                CallbackQueryHandler(back_to_subtitle_style, pattern='^back_to_subtitle_style$')
+            ],
             CONFIRM_CONFIG: [
-                CallbackQueryHandler(confirm_config, pattern='^confirm'),
-                CallbackQueryHandler(cancel_conversation, pattern='^cancel'),
+                CallbackQueryHandler(confirm_config, pattern='^confirm$'),
+                CallbackQueryHandler(cancel_conversation, pattern='^cancel$'),
+                CallbackQueryHandler(back_to_get_capitalize, pattern='^back_to_get_capitalize$')
             ]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("start", start)],
         conversation_timeout=600 # 10 минут на диалог
     )
 
     application.add_handler(conv_handler)
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("balance", balance_command))
 
     logger.info("Бот запущен и готов к работе...")
     application.run_polling()

@@ -78,6 +78,7 @@ def get_conv_handler():
             ],
             GET_CRYPTO_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_crypto_amount),
+                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ]
         },

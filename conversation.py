@@ -1,5 +1,5 @@
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from commands import start, topup_start
+from commands import start, topup_start, broadcast_start, broadcast_message, cancel_broadcast
 from handlers import (
     get_url,
     get_shorts_number_auto,
@@ -27,9 +27,9 @@ from states import (
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
     GET_TOPUP_PACKAGE,
-    GET_CRYPTO_AMOUNT
+    GET_CRYPTO_AMOUNT,
+    GET_BROADCAST_MESSAGE
 )
-
 
 
 def get_conv_handler():
@@ -81,3 +81,13 @@ def get_conv_handler():
         allow_reentry=True
     )
     return conv_handler
+
+def get_broadcast_handler():
+    broadcast_handler = ConversationHandler(
+        entry_points=[CommandHandler("broadcast", broadcast_start)],
+        states={
+            GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_broadcast)],
+    )
+    return broadcast_handler

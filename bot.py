@@ -5,7 +5,7 @@ from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler
 import asyncio
 
-from conversation import get_conv_handler
+from conversation import get_conv_handler, get_broadcast_handler
 from commands import help_command, balance_command, add_shorts_command, set_user_balance_command
 from handlers import precheckout_callback, successful_payment_callback, check_crypto_payment
 from processing.bot_logic import main as process_video
@@ -144,10 +144,12 @@ def main():
     application = Application.builder().token(token).post_init(post_init_hook).build()
 
     conv_handler = get_conv_handler()
+    broadcast_handler = get_broadcast_handler()
 
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(conv_handler)
+    application.add_handler(broadcast_handler)
     application.add_handler(CommandHandler("addshorts", add_shorts_command))
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
     application.add_handler(CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'))

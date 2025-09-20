@@ -70,5 +70,12 @@ def set_user_balance(user_id: int, amount: int):
         )
         conn.commit()
 
+def get_all_user_ids():
+    """Возвращает список всех user_id в базе данных."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users")
+        return [row[0] for row in cursor.fetchall()]
+
 # Убедимся, что база данных инициализируется при запуске
 initialize_database()

@@ -2,7 +2,7 @@ import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
-from database import get_user, add_to_user_balance, set_user_balance
+from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids
 from states import GET_URL, GET_TOPUP_METHOD
 
 # Configure logging
@@ -34,6 +34,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         logger.info("User is an admin, adding admin commands.")
         base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
         base_commands.append(BotCommand(command="setbalance", description="Установить баланс пользователю"))
+        base_commands.append(BotCommand(command="broadcast", description="Сделать рассылку"))
     
     await context.bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
@@ -138,3 +139,48 @@ async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT
 
     except (ValueError, IndexError):
         await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id> <amount>")
+
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
+
+async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the broadcast conversation."""
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    if str(update.effective_user.id) not in admin_ids:
+        return ConversationHandler.END
+
+    await update.message.reply_text("Отправьте пост, который нужно разослать юзерам. Вы можете отменить рассылку командой /cancel.")
+    return GET_BROADCAST_MESSAGE
+
+async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Sends a broadcast message to all users."""
+    text = update.message.text or update.message.caption
+    photo = update.message.photo[-1].file_id if update.message.photo else None
+    animation = update.message.animation.file_id if update.message.animation else None
+
+    user_ids = get_all_user_ids()
+    sent_count = 0
+    failed_count = 0
+
+    await update.message.reply_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
+
+    for user_id in user_ids:
+        try:
+            if photo:
+                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=text)
+            elif animation:
+                await context.bot.send_animation(chat_id=user_id, animation=animation, caption=text)
+            elif text:
+                await context.bot.send_message(chat_id=user_id, text=text)
+            sent_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send message to {user_id}: {e}")
+            failed_count += 1
+
+    await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+    return ConversationHandler.END
+
+async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels the broadcast."""
+    await update.message.reply_text("Рассылка отменена.")
+    return ConversationHandler.END

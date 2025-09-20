@@ -2,7 +2,7 @@ import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
-from database import get_user, add_to_user_balance
+from database import get_user, add_to_user_balance, set_user_balance
 from states import GET_URL, GET_TOPUP_METHOD
 
 # Configure logging
@@ -31,8 +31,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         BotCommand(command="topup", description="Пополнить баланс"),
     ]
     if str(user_id) in admin_ids:
-        logger.info("User is an admin, adding /addshorts command.")
+        logger.info("User is an admin, adding admin commands.")
         base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
+        base_commands.append(BotCommand(command="setbalance", description="Установить баланс пользователю"))
     
     await context.bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
@@ -92,7 +93,8 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
 async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Adds a specified amount of shorts to a user's balance."""
-    admin_ids = os.environ.get("ADMIN_USER_IDS", "").split(',')
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
     if str(update.effective_user.id) not in admin_ids:
         return
 
@@ -112,3 +114,27 @@ async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     except (ValueError, IndexError):
         await update.message.reply_text("Неверный формат команды. Используйте: /addshorts <user_id> <amount>")
+
+async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sets a user's balance to a specified amount."""
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    if str(update.effective_user.id) not in admin_ids:
+        return
+
+    try:
+        user_id_str, amount_str = context.args
+        user_id = int(user_id_str)
+        amount = int(amount_str)
+
+        if amount < 0:
+            await update.message.reply_text("Баланс не может быть отрицательным.")
+            return
+
+        set_user_balance(user_id, amount)
+        _, new_balance, _ = get_user(user_id)
+
+        await update.message.reply_text(f"Баланс пользователя {user_id} установлен в {new_balance}.")
+
+    except (ValueError, IndexError):
+        await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id> <amount>")

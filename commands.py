@@ -5,6 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotComm
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids
+from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
 
 # Configure logging
@@ -17,8 +18,10 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
     user_id = update.effective_user.id
-    user = get_user(user_id)
-    _, balance, _ = user
+    _, balance, _, is_new = get_user(user_id)
+
+    if is_new:
+        log_event(user_id, 'new_user', {'username': update.effective_user.username})
 
     # Set commands for the user
     admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
@@ -69,7 +72,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет текущий баланс пользователя."""
     user_id = update.effective_user.id
-    _, balance, _ = get_user(user_id)
+    _, balance, _, _ = get_user(user_id)
     keyboard = [
         [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
     ]
@@ -111,7 +114,7 @@ async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
         add_to_user_balance(user_id, amount)
-        _, new_balance, _ = get_user(user_id)
+        _, new_balance, _, _ = get_user(user_id)
 
         await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} шортсов. Новый баланс: {new_balance}.")
 
@@ -135,7 +138,7 @@ async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT
             return
 
         set_user_balance(user_id, amount)
-        _, new_balance, _ = get_user(user_id)
+        _, new_balance, _, _ = get_user(user_id)
 
         await update.message.reply_text(f"Баланс пользователя {user_id} установлен в {new_balance}.")
 

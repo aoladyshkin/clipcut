@@ -6,6 +6,7 @@ import os
 import asyncio
 from processing.bot_logic import main as process_video
 from utils import format_config
+from analytics import log_event
 from states import (
     GET_URL,
     GET_SUBTITLE_STYLE,
@@ -249,6 +250,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         'chat_id': query.message.chat.id,
         'user_data': context.user_data.copy()
     }
+    log_event(query.message.chat.id, 'generation_start', {'url': context.user_data['url'], 'config': context.user_data['config']})
     await processing_queue.put(task_data)
     
     logger.info(f"Задача для чата {query.message.chat.id} добавлена в очередь. Задач в очереди: {processing_queue.qsize()}")
@@ -351,7 +353,9 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     shorts_amount = int(payload_parts[2])
 
     add_to_user_balance(user_id, shorts_amount)
-    _, new_balance, _ = get_user(user_id)
+    _, new_balance, _, _ = get_user(user_id)
+
+    log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'shorts_amount': shorts_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
 
     await context.bot.send_message(
         chat_id=user_id,
@@ -452,7 +456,8 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
                     del context.user_data['payment_not_found_messages']
 
                 add_to_user_balance(user_id, amount)
-                _, new_balance, _ = get_user(user_id)
+                _, new_balance, _, _ = get_user(user_id)
+                log_event(user_id, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 
                 await query.edit_message_text(
                     f"Оплата прошла успешно! Ваш баланс пополнен на {amount} шортсов. \nНовый баланс: {new_balance} шортсов."

@@ -161,7 +161,7 @@ def merge_video_audio(video_path, audio_path, output_path):
         
     return output_path
 
-def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
+def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto', user_balance: int = None):
     """
     Делает запрос в Responses API (модель gpt-5) с включённым File Search.
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
@@ -205,6 +205,9 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         "end":   format_seconds_to_hhmmss(float(it["end"])),
         "hook":  it["hook"]
     } for it in data]
+
+    if shorts_number == 'auto' and user_balance is not None and len(items) > user_balance:
+        items = items[:user_balance]
 
     return items
 
@@ -368,14 +371,15 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             layout, main_clip_raw, bottom_video_path, final_width, final_height
         )
 
-        # --- Создание и наложение субтитров ---
-        subtitle_items = get_subtitle_items(
-            subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
-            faster_whisper_model)
-        subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
-
-
-        final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
+        if subtitles_type != 'no_subtitles':
+            # --- Создание и наложение субтитров ---
+            subtitle_items = get_subtitle_items(
+                subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
+                faster_whisper_model)
+            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
+            final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
+        else:
+            final_clip = video_canvas
         final_clip = final_clip.set_duration(video_canvas.duration)
         final_clip.write_videofile(str(output_sub), fps=24, codec="libx264", audio_codec="aac")
         print(f"✅ Создан файл {output_sub}")
@@ -387,7 +391,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
                 futures.append(future)
     return futures
 
-def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False):
+def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False, user_balance: int = None):
 
     # --- Обработка конфига ---
     video_map = {
@@ -398,8 +402,6 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     out_dir = get_unique_output_dir() 
     
-    if status_callback:
-        status_callback("Скачиваем видео с YouTube...")
     print("Скачиваем видео с YouTube...")
     # скачиваем видео
     video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
@@ -411,7 +413,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
 
     if status_callback:
-        status_callback("Анализируем видео...")
+        status_callback("🔍 Анализируем видео...")
     print("Транскрибируем видео...")
     force_ai_transcription = config.get('force_ai_transcription', False)
     transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
@@ -423,7 +425,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number, user_balance=user_balance)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
@@ -431,7 +433,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             status_callback("GPT не смог выделить подходящие отрезки для шортсов.")
         return 0
     if status_callback:
-        status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаю короткие ролики...")
+        status_callback(f"🔥 Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаем короткие ролики...")
     print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
     futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback)

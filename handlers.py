@@ -5,15 +5,14 @@ from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
 from processing.bot_logic import main as process_video
+from utils import format_config
 from states import (
     GET_URL,
     GET_SUBTITLE_STYLE,
     GET_BOTTOM_VIDEO,
     GET_LAYOUT,
     GET_SUBTITLES_TYPE,
-    GET_CAPITALIZE,
     CONFIRM_CONFIG,
-    GET_AI_TRANSCRIPTION,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
     GET_TOPUP_PACKAGE,
@@ -23,7 +22,7 @@ from states import (
 logger = logging.getLogger(__name__)
 
 async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет URL и запрашивает первую настройку."""
+    """Сохраняет URL и запрашивает количество шортсов."""
     url = update.message.text
     if "youtube.com/" not in url and "youtu.be/" not in url:
         await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на YouTube видео.")
@@ -32,28 +31,15 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['url'] = url
     logger.info(f"Пользователь {update.effective_user.id} предоставил URL: {url}")
 
-    keyboard = [
-        [
-            InlineKeyboardButton("Скачать с YouTube", callback_data='youtube'),
-            InlineKeyboardButton("С помощью AI (дольше, но точнее)", callback_data='ai'),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Как получить транскрипцию видео?", reply_markup=reply_markup)
-    return GET_AI_TRANSCRIPTION
-
-async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет выбор транскрипции и запрашивает количество шортсов."""
-    query = update.callback_query
-    await query.answer()
-    context.user_data['config']['force_ai_transcription'] = query.data == 'ai'
-    logger.info(f"Config for {query.from_user.id}: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
+    # Set default transcription method
+    context.user_data['config']['force_ai_transcription'] = False
+    logger.info(f"Config for {update.effective_user.id}: force_ai_transcription = False (default)")
 
     keyboard = [
         [InlineKeyboardButton("Авто", callback_data='auto')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(
+    await update.message.reply_text(
         "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
         reply_markup=reply_markup
     )
@@ -69,8 +55,8 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
 
     keyboard = [
         [
-            InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
-            InlineKeyboardButton("Только основное видео", callback_data='main_only'),
+            InlineKeyboardButton("1:1", callback_data='main_only'),
+            InlineKeyboardButton("1:1 + brainrot снизу", callback_data='top_bottom'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -103,8 +89,8 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
 
         keyboard = [
             [
-                InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
-                InlineKeyboardButton("Только основное видео", callback_data='main_only'),
+                InlineKeyboardButton("1:1", callback_data='main_only'),
+                InlineKeyboardButton("1:1 + brainrot снизу", callback_data='top_bottom'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -116,21 +102,34 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
         return GET_SHORTS_NUMBER
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет стиль субтитров и запрашивает капитализацию."""
+    """Сохраняет стиль субтитров и показывает экран подтверждения."""
     query = update.callback_query
     await query.answer()
     context.user_data['config']['subtitle_style'] = query.data
     logger.info(f"Config for {query.from_user.id}: subtitle_style = {query.data}")
 
+    # Set default capitalization
+    context.user_data['config']['capitalize_sentences'] = False
+    logger.info(f"Config for {query.from_user.id}: capitalize_sentences = False (default)")
+
+    balance = context.user_data.get('balance')
+    settings_text = format_config(context.user_data['config'], balance)
+
     keyboard = [
         [
-            InlineKeyboardButton("Да", callback_data='true'),
-            InlineKeyboardButton("Нет", callback_data='false'),
+            InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
+            InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
-    return GET_CAPITALIZE
+
+    await query.edit_message_text(
+        text=f"Подтвердите настройки:\n\n{settings_text}",
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+
+    return CONFIRM_CONFIG
 
 async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет фоновое видео и запрашивает тип субтитров."""
@@ -144,7 +143,8 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         [
             InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
             InlineKeyboardButton("По фразе", callback_data='phrases'),
-        ]
+        ],
+        [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -166,7 +166,8 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             [
                 InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
                 InlineKeyboardButton("По фразе", callback_data='phrases'),
-            ]
+            ],
+            [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -183,68 +184,45 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return GET_BOTTOM_VIDEO
 
 async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет тип субтитров и запрашивает стиль субтитров."""
+    """Сохраняет тип субтитров и запрашивает стиль субтитров или подтверждение."""
     query = update.callback_query
     await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
-    return GET_SUBTITLE_STYLE
+    choice = query.data
+    context.user_data['config']['subtitles_type'] = choice
+    logger.info(f"Config for {query.from_user.id}: subtitles_type = {choice}")
 
-def format_config(config, balance=None):
-    layout_map = {'top_bottom': 'Осн. видео + brainrot', 'main_only': 'Только основное видео'}
-    video_map = {'gta': 'GTA', 'minecraft': 'Minecraft', None: 'Нет'}
-    sub_type_map = {'word-by-word': 'По одному слову', 'phrases': 'По фразе'}
-    sub_style_map = {'white': 'Белый', 'yellow': 'Желтый'}
-    capitalize_map = {True: 'Да', False: 'Нет'}
-    transcription_map = {True: 'С помощью AI', False: 'Скачать с YouTube'}
-    shorts_number = config.get('shorts_number', 'Авто')
-    if shorts_number != 'auto':
-        shorts_number_text = str(shorts_number)
-    else:
-        shorts_number_text = 'Авто'
+    if choice == 'no_subtitles':
+        context.user_data['config']['subtitle_style'] = None
+        logger.info(f"Config for {query.from_user.id}: subtitle_style = None")
+        
+        balance = context.user_data.get('balance')
+        settings_text = format_config(context.user_data['config'], balance)
 
-    balance_text = f"<b>Ваш баланс</b>: {balance} шортсов\n" if balance is not None else ""
-
-    settings_text = (
-        f"{balance_text}"
-        f"<b>Количество шортсов</b>: {shorts_number_text}\n"
-        f"<b>Способ транскрипции</b>: {transcription_map.get(config.get('force_ai_transcription'), 'Не выбрано')}\n"
-        f"<b>Сетка</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
-        f"<b>Brainrot видео</b>: {video_map.get(config.get('bottom_video'), 'Нет')}\n"
-        f"<b>Тип субтитров</b>: {sub_type_map.get(config.get('subtitles_type'), 'Не выбрано')}\n"
-        f"<b>Цвет субтитров</b>: {sub_style_map.get(config.get('subtitle_style'), 'Не выбрано')}\n"
-        f"<b>Заглавные буквы в начале предложений</b>: {capitalize_map.get(config.get('capitalize_sentences'), 'Не выбрано')}"
-    )
-    return settings_text
-
-async def get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет капитализацию и показывает экран подтверждения."""
-    query = update.callback_query
-    await query.answer()
-    context.user_data['config']['capitalize_sentences'] = query.data == 'true'
-    logger.info(f"Config for {query.from_user.id}: capitalize_sentences = {context.user_data['config']['capitalize_sentences']}")
-
-    balance = context.user_data.get('balance')
-    settings_text = format_config(context.user_data['config'], balance)
-
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
-            InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
+                InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
+            ]
         ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.edit_message_text(
-        text=f"Подтвердите настройки:\n\n{settings_text}",
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
+        await query.edit_message_text(
+            text=f"<b>Подтвердите настройки:</b>\n\n{settings_text}",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+        return CONFIRM_CONFIG
+    else:
+        keyboard = [
+            [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
+        return GET_SUBTITLE_STYLE
 
-    return CONFIRM_CONFIG
+
+
+
 
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Добавляет задачу в очередь после подтверждения."""
@@ -275,7 +253,12 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     logger.info(f"Задача для чата {query.message.chat.id} добавлена в очередь. Задач в очереди: {processing_queue.qsize()}")
 
-    await query.edit_message_text(text=f"Ваш запрос добавлен в очередь (вы #{processing_queue.qsize()} в очереди). Вы получите уведомление, когда обработка начнется.")
+    settings_text = format_config(context.user_data['config'], balance)
+    url = context.user_data['url']
+    await query.edit_message_text(
+        text=f"⏳ Ваш запрос добавлен в очередь (вы <b>#{processing_queue.qsize()} в очереди</b>). Вы получите уведомление, когда обработка начнется.\n\n<b>Ваши настройки:</b>\nURL: {url}\n{settings_text}",
+        parse_mode="HTML"
+    )
 
     return ConversationHandler.END
 

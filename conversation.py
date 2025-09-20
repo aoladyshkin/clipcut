@@ -1,15 +1,13 @@
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from commands import start, topup_start
+from commands import start, topup_start, broadcast_start, broadcast_message, cancel_broadcast
 from handlers import (
     get_url,
-    get_ai_transcription,
     get_shorts_number_auto,
     get_shorts_number_manual,
     get_layout,
     get_bottom_video,
     get_subtitles_type,
     get_subtitle_style,
-    get_capitalize,
     confirm_config,
     cancel_conversation,
     topup_stars,
@@ -25,14 +23,14 @@ from states import (
     GET_BOTTOM_VIDEO,
     GET_LAYOUT,
     GET_SUBTITLES_TYPE,
-    GET_CAPITALIZE,
     CONFIRM_CONFIG,
-    GET_AI_TRANSCRIPTION,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
     GET_TOPUP_PACKAGE,
-    GET_CRYPTO_AMOUNT
+    GET_CRYPTO_AMOUNT,
+    GET_BROADCAST_MESSAGE
 )
+
 
 def get_conv_handler():
     conv_handler = ConversationHandler(
@@ -40,9 +38,7 @@ def get_conv_handler():
             CommandHandler("start", start), CommandHandler("topup", topup_start), CallbackQueryHandler(topup_start, pattern='^topup_start')],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
-            GET_AI_TRANSCRIPTION: [
-                CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)'),
-            ],
+
             GET_SHORTS_NUMBER: [
                 CallbackQueryHandler(get_shorts_number_auto, pattern='^auto'),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual),
@@ -54,14 +50,12 @@ def get_conv_handler():
                 CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)'),
             ],
             GET_SUBTITLES_TYPE: [
-                CallbackQueryHandler(get_subtitles_type, pattern='^(word-by-word|phrases)'),
+                CallbackQueryHandler(get_subtitles_type, pattern='^(word-by-word|phrases|no_subtitles)'),
             ],
             GET_SUBTITLE_STYLE: [
                 CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)'),
             ],
-            GET_CAPITALIZE: [
-                CallbackQueryHandler(get_capitalize, pattern='^(true|false)'),
-            ],
+
             CONFIRM_CONFIG: [
                 CallbackQueryHandler(confirm_config, pattern='^confirm'),
                 CallbackQueryHandler(cancel_conversation, pattern='^cancel'),
@@ -87,3 +81,13 @@ def get_conv_handler():
         allow_reentry=True
     )
     return conv_handler
+
+def get_broadcast_handler():
+    broadcast_handler = ConversationHandler(
+        entry_points=[CommandHandler("broadcast", broadcast_start)],
+        states={
+            GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel_broadcast)],
+    )
+    return broadcast_handler

@@ -1,9 +1,13 @@
 import os
 import json
 import logging
+from dotenv import load_dotenv
 from clickhouse_driver import Client
-
+load_dotenv()
 logger = logging.getLogger(__name__)
+
+table_name = os.environ.get("ANALYTICS_TABLE_NAME", "sf_events")
+
 
 def get_clickhouse_client():
     """Создает и возвращает клиент для подключения к ClickHouse."""
@@ -33,8 +37,8 @@ def init_analytics_db():
         return
 
     try:
-        client.execute("""
-            CREATE TABLE IF NOT EXISTS bot_events (
+        client.execute(f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
                 event_timestamp DateTime DEFAULT now(),
                 user_id UInt64,
                 event_type String,
@@ -42,9 +46,9 @@ def init_analytics_db():
             ) ENGINE = MergeTree()
             ORDER BY (event_timestamp, user_id)
         """)
-        logger.info("Analytics table 'bot_events' is ready.")
+        logger.info(f"Analytics table {table_name} is ready.")
     except Exception as e:
-        logger.error(f"Failed to create 'bot_events' table: {e}")
+        logger.error(f"Failed to create {table_name} table: {e}")
     finally:
         client.disconnect()
 
@@ -57,7 +61,7 @@ def log_event(user_id: int, event_type: str, data: dict):
     try:
         event_data_json = json.dumps(data, ensure_ascii=False)
         client.execute(
-            "INSERT INTO bot_events (user_id, event_type, event_data) VALUES",
+            f"INSERT INTO {table_name} (user_id, event_type, event_data) VALUES",
             [(user_id, event_type, event_data_json)]
         )
     except Exception as e:

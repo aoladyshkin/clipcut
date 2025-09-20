@@ -8,6 +8,7 @@ services:
     env_file:
       - .env
     volumes:
+      - ./data/clipcut.db:/app/clipcut.db
       - ~/keepers:/app/keepers
       - ~/fonts:/app/fonts
     restart: unless-stopped

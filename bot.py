@@ -103,7 +103,8 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
         else:
             await bot.send_message(
                 chat_id=chat_id,
-                text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился."
+                text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился.",
+                parse_mode="HTML"
             )
 
 

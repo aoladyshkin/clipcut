@@ -56,13 +56,14 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
         asyncio.run_coroutine_threadsafe(send_status_update_async(status_text), main_loop)
 
     async def send_video_async(file_path, hook, start, end):
-        caption = f"Hook: {hook}\n\nТаймкоды: {start} – {end}"
+        caption = f"<b>Hook</b>: {hook}\n\n<b>Таймкоды</b>: {start} – {end}"
         try:
             with open(file_path, 'rb') as video_file:
                 await bot.send_video(
                     chat_id=chat_id, 
                     video=video_file, 
                     caption=caption, 
+                    parse_mode="HTML", 
                     width=720, 
                     height=1280, 
                     supports_streaming=True,
@@ -96,12 +97,13 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             _, new_balance, _ = get_user(chat_id)
             await bot.send_message(
                 chat_id=chat_id,
-                text=f"✅ Обработка завершена!\n\nВаш новый баланс: {new_balance} шортсов."
+                text=f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.",
+                parse_mode="HTML"
             )
         else:
             await bot.send_message(
                 chat_id=chat_id,
-                text="Обработка завершена, но не было создано ни одного шортса.\n\nВаш баланс не изменился."
+                text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился."
             )
 
 

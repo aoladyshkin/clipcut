@@ -371,14 +371,15 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             layout, main_clip_raw, bottom_video_path, final_width, final_height
         )
 
-        # --- Создание и наложение субтитров ---
-        subtitle_items = get_subtitle_items(
-            subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
-            faster_whisper_model)
-        subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
-
-
-        final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
+        if subtitles_type != 'no_subtitles':
+            # --- Создание и наложение субтитров ---
+            subtitle_items = get_subtitle_items(
+                subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
+                faster_whisper_model)
+            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
+            final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
+        else:
+            final_clip = video_canvas
         final_clip = final_clip.set_duration(video_canvas.duration)
         final_clip.write_videofile(str(output_sub), fps=24, codec="libx264", audio_codec="aac")
         print(f"✅ Создан файл {output_sub}")
@@ -432,7 +433,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             status_callback("GPT не смог выделить подходящие отрезки для шортсов.")
         return 0
     if status_callback:
-        status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаем короткие ролики...")
+        status_callback(f"🔥 Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаем короткие ролики...")
     print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
     futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback)

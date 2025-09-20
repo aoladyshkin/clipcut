@@ -143,7 +143,8 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         [
             InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
             InlineKeyboardButton("По фразе", callback_data='phrases'),
-        ]
+        ],
+        [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -165,7 +166,8 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             [
                 InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
                 InlineKeyboardButton("По фразе", callback_data='phrases'),
-            ]
+            ],
+            [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
@@ -182,15 +184,41 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return GET_BOTTOM_VIDEO
 
 async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет тип субтитров и запрашивает стиль субтитров."""
+    """Сохраняет тип субтитров и запрашивает стиль субтитров или подтверждение."""
     query = update.callback_query
     await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
-    return GET_SUBTITLE_STYLE
+    choice = query.data
+    context.user_data['config']['subtitles_type'] = choice
+    logger.info(f"Config for {query.from_user.id}: subtitles_type = {choice}")
+
+    if choice == 'no_subtitles':
+        context.user_data['config']['subtitle_style'] = None
+        logger.info(f"Config for {query.from_user.id}: subtitle_style = None")
+        
+        balance = context.user_data.get('balance')
+        settings_text = format_config(context.user_data['config'], balance)
+
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
+                InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            text=f"<b>Подтвердите настройки:</b>\n\n{settings_text}",
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+        return CONFIRM_CONFIG
+    else:
+        keyboard = [
+            [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
+        return GET_SUBTITLE_STYLE
 
 
 

@@ -85,7 +85,8 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             user_data['config'],
             send_status_update,
             send_video_callback,
-            delete_output
+            delete_output,
+            user_balance=user_data.get('balance')
         )
 
         if shorts_generated_count > 0:

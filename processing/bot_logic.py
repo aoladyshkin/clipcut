@@ -161,7 +161,7 @@ def merge_video_audio(video_path, audio_path, output_path):
         
     return output_path
 
-def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
+def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto', user_balance: int = None):
     """
     Делает запрос в Responses API (модель gpt-5) с включённым File Search.
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
@@ -205,6 +205,9 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         "end":   format_seconds_to_hhmmss(float(it["end"])),
         "hook":  it["hook"]
     } for it in data]
+
+    if shorts_number == 'auto' and user_balance is not None and len(items) > user_balance:
+        items = items[:user_balance]
 
     return items
 
@@ -387,7 +390,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
                 futures.append(future)
     return futures
 
-def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False):
+def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False, user_balance: int = None):
 
     # --- Обработка конфига ---
     video_map = {
@@ -423,7 +426,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number, user_balance=user_balance)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")

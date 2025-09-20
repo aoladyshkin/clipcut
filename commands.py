@@ -145,6 +145,7 @@ async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT
     except (ValueError, IndexError):
         await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id> <amount>")
 
+
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the broadcast conversation."""
     admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
@@ -154,7 +155,6 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     await update.message.reply_text("Отправьте пост, который нужно разослать юзерам. Вы можете отменить рассылку командой /cancel.")
     return GET_BROADCAST_MESSAGE
-
 
 
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -190,7 +190,11 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
     return ConversationHandler.END
 
-async def cancel_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Cancels the broadcast."""
-    await update.message.reply_text("Рассылка отменена.")
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels and ends the current conversation."""
+    context.user_data.clear()
+    context.user_data['config'] = {}
+    await update.message.reply_text(
+        "Действие отменено. Пришлите мне ссылку на YouTube видео, чтобы начать заново."
+    )
     return ConversationHandler.END

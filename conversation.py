@@ -1,5 +1,5 @@
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from commands import start, topup_start, broadcast_start, broadcast_message, cancel_broadcast
+from commands import start, topup_start, broadcast_start, broadcast_message, cancel
 from handlers import (
     get_url,
     get_shorts_number_auto,
@@ -31,14 +31,16 @@ from states import (
     GET_BROADCAST_MESSAGE
 )
 
-
 def get_conv_handler():
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler("start", start), CommandHandler("topup", topup_start), CallbackQueryHandler(topup_start, pattern='^topup_start')],
+            CommandHandler("start", start),
+            CommandHandler("topup", topup_start),
+            CallbackQueryHandler(topup_start, pattern='^topup_start'),
+            CommandHandler("broadcast", broadcast_start)
+        ],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
-
             GET_SHORTS_NUMBER: [
                 CallbackQueryHandler(get_shorts_number_auto, pattern='^auto'),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual),
@@ -55,7 +57,6 @@ def get_conv_handler():
             GET_SUBTITLE_STYLE: [
                 CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)'),
             ],
-
             CONFIRM_CONFIG: [
                 CallbackQueryHandler(confirm_config, pattern='^confirm'),
                 CallbackQueryHandler(cancel_conversation, pattern='^cancel'),
@@ -68,26 +69,16 @@ def get_conv_handler():
             GET_TOPUP_PACKAGE: [
                 CallbackQueryHandler(send_invoice_for_stars, pattern='^topup_\d+_\d+'),
                 CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method'),
-				CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ],
             GET_CRYPTO_AMOUNT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_crypto_amount),
                 CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
-            ]
+            ],
+            GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
         },
-        fallbacks=[CommandHandler("start", start)],
-        conversation_timeout=600, # 10 минут на диалог
+        fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start)],
         allow_reentry=True
     )
     return conv_handler
-
-def get_broadcast_handler():
-    broadcast_handler = ConversationHandler(
-        entry_points=[CommandHandler("broadcast", broadcast_start)],
-        states={
-            GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
-        },
-        fallbacks=[CommandHandler("cancel", cancel_broadcast)],
-    )
-    return broadcast_handler

@@ -8,7 +8,6 @@ from handlers import (
     get_bottom_video,
     get_subtitles_type,
     get_subtitle_style,
-    get_capitalize,
     confirm_config,
     cancel_conversation,
     topup_stars,
@@ -24,7 +23,6 @@ from states import (
     GET_BOTTOM_VIDEO,
     GET_LAYOUT,
     GET_SUBTITLES_TYPE,
-    GET_CAPITALIZE,
     CONFIRM_CONFIG,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
@@ -55,9 +53,7 @@ def get_conv_handler():
             GET_SUBTITLE_STYLE: [
                 CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)'),
             ],
-            GET_CAPITALIZE: [
-                CallbackQueryHandler(get_capitalize, pattern='^(true|false)'),
-            ],
+
             CONFIRM_CONFIG: [
                 CallbackQueryHandler(confirm_config, pattern='^confirm'),
                 CallbackQueryHandler(cancel_conversation, pattern='^cancel'),

@@ -11,7 +11,6 @@ from states import (
     GET_BOTTOM_VIDEO,
     GET_LAYOUT,
     GET_SUBTITLES_TYPE,
-    GET_CAPITALIZE,
     CONFIRM_CONFIG,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
@@ -102,21 +101,34 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
         return GET_SHORTS_NUMBER
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет стиль субтитров и запрашивает капитализацию."""
+    """Сохраняет стиль субтитров и показывает экран подтверждения."""
     query = update.callback_query
     await query.answer()
     context.user_data['config']['subtitle_style'] = query.data
     logger.info(f"Config for {query.from_user.id}: subtitle_style = {query.data}")
 
+    # Set default capitalization
+    context.user_data['config']['capitalize_sentences'] = False
+    logger.info(f"Config for {query.from_user.id}: capitalize_sentences = False (default)")
+
+    balance = context.user_data.get('balance')
+    settings_text = format_config(context.user_data['config'], balance)
+
     keyboard = [
         [
-            InlineKeyboardButton("Да", callback_data='true'),
-            InlineKeyboardButton("Нет", callback_data='false'),
+            InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
+            InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Начинать предложения в субтитрах с заглавной буквы?", reply_markup=reply_markup)
-    return GET_CAPITALIZE
+
+    await query.edit_message_text(
+        text=f"Подтвердите настройки:\n\n{settings_text}",
+        reply_markup=reply_markup,
+        parse_mode="HTML"
+    )
+
+    return CONFIRM_CONFIG
 
 async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет фоновое видео и запрашивает тип субтитров."""
@@ -202,35 +214,11 @@ def format_config(config, balance=None):
         f"<b>Brainrot видео</b>: {video_map.get(config.get('bottom_video'), 'Нет')}\n"
         f"<b>Тип субтитров</b>: {sub_type_map.get(config.get('subtitles_type'), 'Не выбрано')}\n"
         f"<b>Цвет субтитров</b>: {sub_style_map.get(config.get('subtitle_style'), 'Не выбрано')}\n"
-        f"<b>Заглавные буквы в начале предложений</b>: {capitalize_map.get(config.get('capitalize_sentences'), 'Не выбрано')}"
+
     )
     return settings_text
 
-async def get_capitalize(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет капитализацию и показывает экран подтверждения."""
-    query = update.callback_query
-    await query.answer()
-    context.user_data['config']['capitalize_sentences'] = query.data == 'true'
-    logger.info(f"Config for {query.from_user.id}: capitalize_sentences = {context.user_data['config']['capitalize_sentences']}")
 
-    balance = context.user_data.get('balance')
-    settings_text = format_config(context.user_data['config'], balance)
-
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
-            InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.edit_message_text(
-        text=f"Подтвердите настройки:\n\n{settings_text}",
-        reply_markup=reply_markup,
-        parse_mode="HTML"
-    )
-
-    return CONFIRM_CONFIG
 
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Добавляет задачу в очередь после подтверждения."""

@@ -139,7 +139,7 @@ async def post_init_hook(application: Application):
     logger.info(f"Очередь обработки и {max_concurrent_tasks} воркер(а/ов) успешно запущены.")
 
     # Инициализация аналитической базы данных
-    init_analytics_db() 
+    init_analytics_db()
 
 def main():
     """Основная функция для запуска бота."""

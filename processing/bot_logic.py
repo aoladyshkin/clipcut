@@ -401,8 +401,6 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     out_dir = get_unique_output_dir() 
     
-    if status_callback:
-        status_callback("Скачиваем видео с YouTube...")
     print("Скачиваем видео с YouTube...")
     # скачиваем видео
     video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
@@ -414,7 +412,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
 
     if status_callback:
-        status_callback("Анализируем видео...")
+        status_callback("🔍 Анализируем видео...")
     print("Транскрибируем видео...")
     force_ai_transcription = config.get('force_ai_transcription', False)
     transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
@@ -434,7 +432,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             status_callback("GPT не смог выделить подходящие отрезки для шортсов.")
         return 0
     if status_callback:
-        status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаю короткие ролики...")
+        status_callback(f"Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаем короткие ролики...")
     print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
     futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback)

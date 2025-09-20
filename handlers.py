@@ -5,6 +5,7 @@ from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
 from processing.bot_logic import main as process_video
+from utils import format_config
 from states import (
     GET_URL,
     GET_SUBTITLE_STYLE,
@@ -54,8 +55,8 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
 
     keyboard = [
         [
-            InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
-            InlineKeyboardButton("Только основное видео", callback_data='main_only'),
+            InlineKeyboardButton("1:1", callback_data='main_only'),
+            InlineKeyboardButton("1:1 + brainrot снизу", callback_data='top_bottom'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -88,8 +89,8 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
 
         keyboard = [
             [
-                InlineKeyboardButton("Осн. видео (верх) + brainrot снизу", callback_data='top_bottom'),
-                InlineKeyboardButton("Только основное видео", callback_data='main_only'),
+                InlineKeyboardButton("1:1", callback_data='main_only'),
+                InlineKeyboardButton("1:1 + brainrot снизу", callback_data='top_bottom'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -191,32 +192,7 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
     return GET_SUBTITLE_STYLE
 
-def format_config(config, balance=None):
-    layout_map = {'top_bottom': 'Осн. видео + brainrot', 'main_only': 'Только основное видео'}
-    video_map = {'gta': 'GTA', 'minecraft': 'Minecraft', None: 'Нет'}
-    sub_type_map = {'word-by-word': 'По одному слову', 'phrases': 'По фразе'}
-    sub_style_map = {'white': 'Белый', 'yellow': 'Желтый'}
-    capitalize_map = {True: 'Да', False: 'Нет'}
-    transcription_map = {True: 'С помощью AI', False: 'Скачать с YouTube'}
-    shorts_number = config.get('shorts_number', 'Авто')
-    if shorts_number != 'auto':
-        shorts_number_text = str(shorts_number)
-    else:
-        shorts_number_text = 'Авто'
 
-    balance_text = f"<b>Ваш баланс</b>: {balance} шортсов\n" if balance is not None else ""
-
-    settings_text = (
-        f"{balance_text}"
-        f"<b>Количество шортсов</b>: {shorts_number_text}\n"
-
-        f"<b>Сетка</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
-        f"<b>Brainrot видео</b>: {video_map.get(config.get('bottom_video'), 'Нет')}\n"
-        f"<b>Тип субтитров</b>: {sub_type_map.get(config.get('subtitles_type'), 'Не выбрано')}\n"
-        f"<b>Цвет субтитров</b>: {sub_style_map.get(config.get('subtitle_style'), 'Не выбрано')}\n"
-
-    )
-    return settings_text
 
 
 
@@ -249,7 +225,12 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     logger.info(f"Задача для чата {query.message.chat.id} добавлена в очередь. Задач в очереди: {processing_queue.qsize()}")
 
-    await query.edit_message_text(text=f"Ваш запрос добавлен в очередь (вы #{processing_queue.qsize()} в очереди). Вы получите уведомление, когда обработка начнется.")
+    settings_text = format_config(context.user_data['config'], balance)
+    url = context.user_data['url']
+    await query.edit_message_text(
+        text=f"⏳ Ваш запрос добавлен в очередь (вы <b>#{processing_queue.qsize()} в очереди</b>). Вы получите уведомление, когда обработка начнется.\n\n<b>Ваши настройки:</b>\nURL: {url}\n{settings_text}",
+        parse_mode="HTML"
+    )
 
     return ConversationHandler.END
 

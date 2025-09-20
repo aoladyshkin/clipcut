@@ -154,7 +154,10 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Sends a broadcast message to all users."""
-    text = update.message.text or update.message.caption
+    text = update.message.text
+    entities = update.message.entities
+    caption = update.message.caption
+    caption_entities = update.message.caption_entities
     photo = update.message.photo[-1].file_id if update.message.photo else None
     animation = update.message.animation.file_id if update.message.animation else None
 
@@ -167,11 +170,11 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     for user_id in user_ids:
         try:
             if photo:
-                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=text)
+                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=caption, caption_entities=caption_entities)
             elif animation:
-                await context.bot.send_animation(chat_id=user_id, animation=animation, caption=text)
+                await context.bot.send_animation(chat_id=user_id, animation=animation, caption=caption, caption_entities=caption_entities)
             elif text:
-                await context.bot.send_message(chat_id=user_id, text=text)
+                await context.bot.send_message(chat_id=user_id, text=text, entities=entities)
             sent_count += 1
         except Exception as e:
             logger.error(f"Failed to send message to {user_id}: {e}")

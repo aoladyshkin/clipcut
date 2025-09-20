@@ -1,7 +1,7 @@
 import sqlite3
 from typing import Optional, Tuple
 
-DB_FILE = "clipcut.db"
+DB_FILE = "data/clipcut.db"
 
 def initialize_database():
     """Инициализирует базу данных и создает таблицу, если она не существует."""

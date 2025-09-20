@@ -1,9 +1,11 @@
 import logging
 import os
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
+from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids
-from states import GET_URL, GET_TOPUP_METHOD
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
 
 # Configure logging
 logging.basicConfig(
@@ -140,8 +142,6 @@ async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT
     except (ValueError, IndexError):
         await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id> <amount>")
 
-from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
-
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the broadcast conversation."""
     admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
@@ -152,8 +152,10 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     await update.message.reply_text("Отправьте пост, который нужно разослать юзерам. Вы можете отменить рассылку командой /cancel.")
     return GET_BROADCAST_MESSAGE
 
+
+
 async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Sends a broadcast message to all users."""
+    """Sends a broadcast message to all users, respecting rate limits."""
     text = update.message.text
     entities = update.message.entities
     caption = update.message.caption
@@ -176,9 +178,11 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             elif text:
                 await context.bot.send_message(chat_id=user_id, text=text, entities=entities)
             sent_count += 1
-        except Exception as e:
+        except TelegramError as e:
             logger.error(f"Failed to send message to {user_id}: {e}")
             failed_count += 1
+        
+        await asyncio.sleep(0.04) # ~25 messages per second
 
     await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
     return ConversationHandler.END

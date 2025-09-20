@@ -13,7 +13,6 @@ from states import (
     GET_SUBTITLES_TYPE,
     GET_CAPITALIZE,
     CONFIRM_CONFIG,
-    GET_AI_TRANSCRIPTION,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
     GET_TOPUP_PACKAGE,
@@ -23,7 +22,7 @@ from states import (
 logger = logging.getLogger(__name__)
 
 async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет URL и запрашивает первую настройку."""
+    """Сохраняет URL и запрашивает количество шортсов."""
     url = update.message.text
     if "youtube.com/" not in url and "youtu.be/" not in url:
         await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на YouTube видео.")
@@ -32,28 +31,15 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['url'] = url
     logger.info(f"Пользователь {update.effective_user.id} предоставил URL: {url}")
 
-    keyboard = [
-        [
-            InlineKeyboardButton("Скачать с YouTube", callback_data='youtube'),
-            InlineKeyboardButton("С помощью AI (дольше, но точнее)", callback_data='ai'),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Как получить транскрипцию видео?", reply_markup=reply_markup)
-    return GET_AI_TRANSCRIPTION
-
-async def get_ai_transcription(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет выбор транскрипции и запрашивает количество шортсов."""
-    query = update.callback_query
-    await query.answer()
-    context.user_data['config']['force_ai_transcription'] = query.data == 'ai'
-    logger.info(f"Config for {query.from_user.id}: force_ai_transcription = {context.user_data['config']['force_ai_transcription']}")
+    # Set default transcription method
+    context.user_data['config']['force_ai_transcription'] = False
+    logger.info(f"Config for {update.effective_user.id}: force_ai_transcription = False (default)")
 
     keyboard = [
         [InlineKeyboardButton("Авто", callback_data='auto')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(
+    await update.message.reply_text(
         "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
         reply_markup=reply_markup
     )
@@ -211,7 +197,7 @@ def format_config(config, balance=None):
     settings_text = (
         f"{balance_text}"
         f"<b>Количество шортсов</b>: {shorts_number_text}\n"
-        f"<b>Способ транскрипции</b>: {transcription_map.get(config.get('force_ai_transcription'), 'Не выбрано')}\n"
+
         f"<b>Сетка</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
         f"<b>Brainrot видео</b>: {video_map.get(config.get('bottom_video'), 'Нет')}\n"
         f"<b>Тип субтитров</b>: {sub_type_map.get(config.get('subtitles_type'), 'Не выбрано')}\n"

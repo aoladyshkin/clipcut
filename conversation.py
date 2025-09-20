@@ -2,7 +2,6 @@ from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, fi
 from commands import start, topup_start
 from handlers import (
     get_url,
-    get_ai_transcription,
     get_shorts_number_auto,
     get_shorts_number_manual,
     get_layout,
@@ -27,7 +26,6 @@ from states import (
     GET_SUBTITLES_TYPE,
     GET_CAPITALIZE,
     CONFIRM_CONFIG,
-    GET_AI_TRANSCRIPTION,
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
     GET_TOPUP_PACKAGE,
@@ -40,9 +38,7 @@ def get_conv_handler():
             CommandHandler("start", start), CommandHandler("topup", topup_start), CallbackQueryHandler(topup_start, pattern='^topup_start')],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
-            GET_AI_TRANSCRIPTION: [
-                CallbackQueryHandler(get_ai_transcription, pattern='^(youtube|ai)'),
-            ],
+
             GET_SHORTS_NUMBER: [
                 CallbackQueryHandler(get_shorts_number_auto, pattern='^auto'),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual),

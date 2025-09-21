@@ -9,3 +9,4 @@ python-dotenv
 pytubefix
 aiocryptopay
 python-telegram-bot[job-queue]
+clickhouse-driver

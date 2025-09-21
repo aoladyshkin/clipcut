@@ -5,10 +5,11 @@ from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler
 import asyncio
 
-from conversation import get_conv_handler, get_broadcast_handler
+from conversation import get_conv_handler
 from commands import help_command, balance_command, add_shorts_command, set_user_balance_command
 from handlers import precheckout_callback, successful_payment_callback, check_crypto_payment
 from processing.bot_logic import main as process_video
+from analytics import init_analytics_db, log_event
 
 # Настройка логирования
 logging.basicConfig(
@@ -41,12 +42,39 @@ async def processing_worker(queue: asyncio.Queue, bot: Bot):
 
 async def run_processing(chat_id: int, user_data: dict, bot: Bot):
     """Асинхронно запускает обработку видео и отправляет результат."""
+    from database import get_user # Локальный импорт для избежания циклических зависимостей
+
+    # --- Проверка баланса перед началом обработки ---
+    _, current_balance, _, _ = get_user(chat_id)
+    shorts_to_generate = user_data.get('config', {}).get('shorts_number')
+
+    # Проверяем, если указано конкретное число шортсов
+    if isinstance(shorts_to_generate, int) and current_balance < shorts_to_generate:
+        logger.warning(f"Отмена задачи для чата {chat_id}: недостаточный баланс. "
+                       f"Требуется: {shorts_to_generate}, в наличии: {current_balance}")
+        await bot.send_message(
+            chat_id,
+            f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
+            f"недостаточно средств для создания {shorts_to_generate} видео. "
+            f"Пожалуйста, пополните баланс."
+        )
+        return
+
+    # Проверяем, если баланс нулевой (даже для режима 'авто')
+    if current_balance <= 0:
+        logger.warning(f"Отмена задачи для чата {chat_id}: нулевой баланс.")
+        await bot.send_message(
+            chat_id,
+            f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
+            f"Пожалуйста, пополните баланс."
+        )
+        return
+
     await bot.send_message(chat_id, "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время.")
 
     main_loop = asyncio.get_running_loop()
 
     async def send_status_update_async(status_text: str):
-        # Просто отправляем новое сообщение, так как редактирование может быть сложным
         await bot.send_message(
             chat_id=chat_id,
             text=f"{status_text}"
@@ -80,6 +108,7 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
     try:
         delete_output = os.environ.get("DELETE_OUTPUT_AFTER_SENDING", "false").lower() == "true"
         
+        # Передаем актуальный баланс в функцию обработки
         shorts_generated_count = await asyncio.to_thread(
             process_video,
             user_data['url'],
@@ -87,20 +116,22 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             send_status_update,
             send_video_callback,
             delete_output,
-            user_balance=user_data.get('balance')
+            user_balance=current_balance # Используем актуальный баланс
         )
 
         if shorts_generated_count > 0:
             from database import update_user_balance, get_user
             update_user_balance(chat_id, shorts_generated_count)
             logger.info(f"Баланс пользователя {chat_id} обновлен. Списано {shorts_generated_count} шортсов.")
-            _, new_balance, _ = get_user(chat_id)
+            _, new_balance, _, _ = get_user(chat_id)
+            log_event(chat_id, 'generation_success', {'url': user_data['url'], 'config': user_data['config'], 'generated_count': shorts_generated_count})
             await bot.send_message(
                 chat_id=chat_id,
                 text=f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.",
                 parse_mode="HTML"
             )
         else:
+            log_event(chat_id, 'generation_error', {'url': user_data['url'], 'config': user_data['config'], 'error': 'No shorts generated'})
             await bot.send_message(
                 chat_id=chat_id,
                 text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился.",
@@ -110,6 +141,7 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
 
     except Exception as e:
         logger.error(f"Ошибка при обработке видео для чата {chat_id}: {e}", exc_info=True)
+        log_event(chat_id, 'generation_error', {'url': user_data.get('url'), 'config': user_data.get('config'), 'error': str(e)})
         await bot.send_message(
             chat_id=chat_id,
             text=f"Произошла критическая ошибка во время обработки видео: {e}"
@@ -134,6 +166,9 @@ async def post_init_hook(application: Application):
 
     logger.info(f"Очередь обработки и {max_concurrent_tasks} воркер(а/ов) успешно запущены.")
 
+    # Инициализация аналитической базы данных
+    init_analytics_db()
+
 def main():
     """Основная функция для запуска бота."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -144,12 +179,10 @@ def main():
     application = Application.builder().token(token).post_init(post_init_hook).build()
 
     conv_handler = get_conv_handler()
-    broadcast_handler = get_broadcast_handler()
 
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(conv_handler)
-    application.add_handler(broadcast_handler)
     application.add_handler(CommandHandler("addshorts", add_shorts_command))
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
     application.add_handler(CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'))

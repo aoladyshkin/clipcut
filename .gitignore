@@ -20,3 +20,5 @@ venv/
 
 # Database file
 clipcut.db
+
+data/

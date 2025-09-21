@@ -1,7 +1,7 @@
 import sqlite3
 from typing import Optional, Tuple
 
-DB_FILE = "clipcut.db"
+DB_FILE = "data/clipcut.db"
 
 def initialize_database():
     """Инициализирует базу данных и создает таблицу, если она не существует."""
@@ -16,10 +16,11 @@ def initialize_database():
         """)
         conn.commit()
 
-def get_user(user_id: int) -> Optional[Tuple[int, int, int]]:
+def get_user(user_id: int) -> Optional[Tuple[int, int, int, bool]]:
     """
     Получает данные пользователя по user_id.
     Если пользователь не найден, создает его с балансом по умолчанию.
+    Возвращает кортеж (user_id, balance, generated_shorts_count, is_new).
     """
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
@@ -30,8 +31,8 @@ def get_user(user_id: int) -> Optional[Tuple[int, int, int]]:
             cursor.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
             conn.commit()
             # Возвращаем данные нового пользователя
-            return user_id, 10, 0
-        return user
+            return user_id, 10, 0, True
+        return user + (False,)
 
 def update_user_balance(user_id: int, shorts_generated: int):
     """

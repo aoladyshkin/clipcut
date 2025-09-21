@@ -6,6 +6,7 @@ import os
 import asyncio
 from processing.bot_logic import main as process_video
 from utils import format_config
+from analytics import log_event
 from states import (
     GET_URL,
     GET_SUBTITLE_STYLE,
@@ -39,10 +40,11 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton("Авто", callback_data='auto')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
         reply_markup=reply_markup
     )
+    context.user_data['shorts_number_message_id'] = message.message_id
     return GET_SHORTS_NUMBER
 
 
@@ -66,22 +68,51 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
 
 async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет число шортсов и запрашивает сетку."""
+    
+    # Delete the bot's prompt message
+    if 'shorts_number_message_id' in context.user_data:
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data.pop('shorts_number_message_id'))
+        except Exception as e:
+            logger.info(f"Could not delete shorts_number_message_id: {e}")
+
+    # Delete the user's message with the number
+    try:
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+    except Exception as e:
+        logger.info(f"Could not delete user's message: {e}")
+
+    # Clean up previous error messages if any
+    if 'error_message_id' in context.user_data:
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data.pop('error_message_id'))
+        except Exception as e:
+            logger.info(f"Could not delete error_message_id: {e}")
+
+    async def resend_prompt(context):
+        keyboard = [[InlineKeyboardButton("Авто", callback_data='auto')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
+            reply_markup=reply_markup
+        )
+        context.user_data['shorts_number_message_id'] = message.message_id
+
     try:
         number = int(update.message.text)
         balance = context.user_data.get('balance', 0)
 
-        if 'error_message_id' in context.user_data:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data['error_message_id'])
-            del context.user_data['error_message_id']
-
         if number <= 0:
-            msg = await update.message.reply_text("Пожалуйста, введите положительное число.")
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="Пожалуйста, введите положительное число.")
             context.user_data['error_message_id'] = msg.message_id
+            await resend_prompt(context)
             return GET_SHORTS_NUMBER
         
         if number > balance:
-            msg = await update.message.reply_text(f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.")
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.")
             context.user_data['error_message_id'] = msg.message_id
+            await resend_prompt(context)
             return GET_SHORTS_NUMBER
 
         context.user_data['config']['shorts_number'] = number
@@ -94,11 +125,16 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Выберите сетку шортса:", reply_markup=reply_markup)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Выберите сетку шортса:",
+            reply_markup=reply_markup
+        )
         return GET_LAYOUT
     except ValueError:
-        msg = await update.message.reply_text("Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
+        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
         context.user_data['error_message_id'] = msg.message_id
+        await resend_prompt(context)
         return GET_SHORTS_NUMBER
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -223,7 +259,6 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 
-
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Добавляет задачу в очередь после подтверждения."""
     query = update.callback_query
@@ -249,6 +284,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         'chat_id': query.message.chat.id,
         'user_data': context.user_data.copy()
     }
+    log_event(query.message.chat.id, 'generation_start', {'url': context.user_data['url'], 'config': context.user_data['config']})
     await processing_queue.put(task_data)
     
     logger.info(f"Задача для чата {query.message.chat.id} добавлена в очередь. Задач в очереди: {processing_queue.qsize()}")
@@ -268,8 +304,14 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     context.user_data.clear()
     context.user_data['config'] = {}
+
+    # Re-fetch balance
+    user_id = query.from_user.id
+    _, balance, _, _ = get_user(user_id)
+    context.user_data['balance'] = balance
+    
     await query.edit_message_text(
-        "Пришли мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики."
+        f"Настройки отменены. У вас на балансе {balance} шортсов.\nПришли мне ссылку на YouTube видео, чтобы начать заново."
     )
     return GET_URL
 
@@ -351,7 +393,9 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     shorts_amount = int(payload_parts[2])
 
     add_to_user_balance(user_id, shorts_amount)
-    _, new_balance, _ = get_user(user_id)
+    _, new_balance, _, _ = get_user(user_id)
+
+    log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'shorts_amount': shorts_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
 
     await context.bot.send_message(
         chat_id=user_id,
@@ -452,7 +496,8 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
                     del context.user_data['payment_not_found_messages']
 
                 add_to_user_balance(user_id, amount)
-                _, new_balance, _ = get_user(user_id)
+                _, new_balance, _, _ = get_user(user_id)
+                log_event(user_id, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 
                 await query.edit_message_text(
                     f"Оплата прошла успешно! Ваш баланс пополнен на {amount} шортсов. \nНовый баланс: {new_balance} шортсов."

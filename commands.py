@@ -8,6 +8,7 @@ from database import get_user, add_to_user_balance, set_user_balance, get_all_us
 from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
 from config import TUTORIAL_LINK
+from datetime import datetime, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -41,6 +42,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
         base_commands.append(BotCommand(command="setbalance", description="Установить баланс пользователю"))
         base_commands.append(BotCommand(command="broadcast", description="Сделать рассылку"))
+        base_commands.append(BotCommand(command="start_discount", description="Начать скидку"))
+        base_commands.append(BotCommand(command="end_discount", description="Завершить скидку"))
     
     await context.bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
@@ -65,7 +68,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/start - Начать работу с ботом\n"
         "/help - Показать это сообщение\n"
         "/balance - Показать текущий баланс\n"
-        "/topup - Пополнить баланс"
+        "/topup - Пополнить баланс\n"
+        "@sf_tsupport_bot - по вопросам и поддержке\n\n"
+        f"👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>"
     )
     await update.message.reply_text(help_text)
 
@@ -198,3 +203,39 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         "Действие отменено. Пришлите мне ссылку на YouTube видео, чтобы начать заново."
     )
     return ConversationHandler.END
+
+async def start_discount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Starts a discount period."""
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    if str(update.effective_user.id) not in admin_ids:
+        return
+
+    if not context.args:
+        await update.message.reply_text("Пожалуйста, укажите время окончания скидки. Формат: YYYY-MM-DD HH:MM")
+        return
+
+    try:
+        end_time_str = " ".join(context.args)
+        end_time_naive = datetime.strptime(end_time_str, "%Y-%m-%d %H:%M")
+        end_time_utc = end_time_naive.replace(tzinfo=timezone.utc)
+        
+        context.bot_data['discount_active'] = True
+        context.bot_data['discount_end_time'] = end_time_utc
+        
+        await update.message.reply_text(f"✅ Скидка началась и продлится до {end_time_str} UTC.")
+        
+    except (ValueError, IndexError):
+        await update.message.reply_text("Неверный формат даты. Используйте: YYYY-MM-DD HH:MM")
+
+async def end_discount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ends a discount period immediately."""
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    if str(update.effective_user.id) not in admin_ids:
+        return
+
+    context.bot_data['discount_active'] = False
+    context.bot_data.pop('discount_end_time', None)
+    
+    await update.message.reply_text("✅ Скидка завершена.")

@@ -19,7 +19,8 @@ from states import (
     GET_TOPUP_PACKAGE,
     GET_CRYPTO_AMOUNT
 )
-from config import STARS_PACKAGES, TUTORIAL_LINK
+from datetime import datetime, timezone
+from config import REGULAR_PRICES, DISCOUNT_PRICES
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,14 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             return GET_SHORTS_NUMBER
         
         if number > balance:
-            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.")
+            topup_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+            ])
+            msg = await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.",
+                reply_markup=topup_keyboard
+            )
             context.user_data['error_message_id'] = msg.message_id
             await resend_prompt(context)
             return GET_SHORTS_NUMBER
@@ -328,8 +336,7 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data['balance'] = balance
     
     await query.edit_message_text(
-        f"Настройки отменены. Пришли мне ссылку на YouTube видео, чтобы начать заново.\n Ваш баланс: {balance} шортсов.\n\n👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>",
-        parse_mode="HTML"
+        f"Настройки отменены. У вас на балансе {balance} шортсов.\nПришли мне ссылку на YouTube видео, чтобы начать заново."
     )
     return GET_URL
 
@@ -348,22 +355,40 @@ async def back_to_topup_method(update: Update, context: ContextTypes.DEFAULT_TYP
     await query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
     return GET_TOPUP_METHOD
 
+
 async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Shows the available packages for Telegram Stars top-up."""
     query = update.callback_query
     await query.answer()
 
+    discount_active = context.bot_data.get('discount_active', False)
+    discount_end_time = context.bot_data.get('discount_end_time')
+
     keyboard = []
-    for package in STARS_PACKAGES:
-        shorts = package['shorts']
-        stars = package['stars']
-        button = InlineKeyboardButton(f"{shorts} шортсов - {stars} ⭐️", callback_data=f'topup_{shorts}_{stars}')
-        keyboard.append([button])
+    if discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time:
+        packages = DISCOUNT_PRICES["stars_packages"]
+        old_packages = REGULAR_PRICES["stars_packages"]
+        message_text = "⭐️ Выберите пакет для пополнения (действует скидка!):"
+        for i, new_package in enumerate(packages):
+            old_price = old_packages[i]['stars']
+            new_price = new_package['stars']
+            shorts = new_package['shorts']
+            button_text = f"{shorts} шортсов - ~{old_price}~ → {new_price} ⭐️"
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_{shorts}_{new_price}')
+            keyboard.append([button])
+    else:
+        packages = REGULAR_PRICES["stars_packages"]
+        message_text = "Выберите пакет для пополнения через ⭐️ Telegram Stars:"
+        for package in packages:
+            shorts = package['shorts']
+            stars = package['stars']
+            button = InlineKeyboardButton(f"{shorts} шортсов - {stars} ⭐️", callback_data=f'topup_{shorts}_{stars}')
+            keyboard.append([button])
     
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Выберите пакет для пополнения через ⭐️ Telegram Stars:", reply_markup=reply_markup)
+    await query.edit_message_text(message_text, reply_markup=reply_markup)
     return GET_TOPUP_PACKAGE
 
 async def send_invoice_for_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -393,7 +418,7 @@ async def send_invoice_for_stars(update: Update, context: ContextTypes.DEFAULT_T
     )
     return ConversationHandler.END
 
-async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
     """Answers the PreCheckoutQuery."""
     query = update.pre_checkout_query
     if query.invoice_payload.startswith('topup-'):
@@ -401,7 +426,7 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await query.answer(ok=False, error_message="Что-то пошло не так...")
 
-async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
     """Confirms the successful payment."""
     payment_info = update.message.successful_payment
     payload_parts = payment_info.invoice_payload.split('-')
@@ -437,7 +462,6 @@ async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 from aiocryptopay import AioCryptoPay, Networks
 
-from config import CRYPTO_PRICE_PER_SHORT, CRYPTO_DISCOUNTS
 
 async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the amount of shorts to buy with crypto."""
@@ -447,15 +471,25 @@ async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await update.message.reply_text("Пожалуйста, введите положительное число.")
             return GET_CRYPTO_AMOUNT
 
+        discount_active = context.bot_data.get('discount_active', False)
+        discount_end_time = context.bot_data.get('discount_end_time')
+
+        if discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time:
+            price_per_short = DISCOUNT_PRICES["crypto_price_per_short"]
+            discounts = DISCOUNT_PRICES["crypto_discounts"]
+        else:
+            price_per_short = REGULAR_PRICES["crypto_price_per_short"]
+            discounts = REGULAR_PRICES["crypto_discounts"]
+
         # Tiered pricing logic
         discount = 0
-        for threshold, discount_value in sorted(CRYPTO_DISCOUNTS.items(), reverse=True):
+        for threshold, discount_value in sorted(discounts.items(), reverse=True):
             if amount >= threshold:
                 discount = discount_value
                 break
 
-        price_per_short = CRYPTO_PRICE_PER_SHORT * (1 - discount)
-        total_price = round(amount * price_per_short, 2)
+        final_price_per_short = price_per_short * (1 - discount)
+        total_price = round(amount * final_price_per_short, 2)
 
         # --- CryptoBot Integration (Real) ---
         crypto = AioCryptoPay(token=os.environ.get("CRYPTO_BOT_TOKEN"), network=Networks.MAIN_NET)
@@ -537,5 +571,4 @@ async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     query = update.callback_query
     await query.answer()
     await query.delete_message()
-    return ConversationHandler.ENDte_message()
     return ConversationHandler.END

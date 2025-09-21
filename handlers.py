@@ -396,6 +396,7 @@ async def send_invoice_for_stars(update: Update, context: ContextTypes.DEFAULT_T
     """Sends an invoice for the selected package."""
     query = update.callback_query
     await query.answer()
+    await query.delete_message()
     
     package = query.data.split('_')
     shorts_amount = int(package[1])

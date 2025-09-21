@@ -40,10 +40,11 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         [InlineKeyboardButton("Авто", callback_data='auto')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
+    message = await update.message.reply_text(
         "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
         reply_markup=reply_markup
     )
+    context.user_data['shorts_number_message_id'] = message.message_id
     return GET_SHORTS_NUMBER
 
 
@@ -67,22 +68,51 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
 
 async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет число шортсов и запрашивает сетку."""
+    
+    # Delete the bot's prompt message
+    if 'shorts_number_message_id' in context.user_data:
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data.pop('shorts_number_message_id'))
+        except Exception as e:
+            logger.info(f"Could not delete shorts_number_message_id: {e}")
+
+    # Delete the user's message with the number
+    try:
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=update.message.message_id)
+    except Exception as e:
+        logger.info(f"Could not delete user's message: {e}")
+
+    # Clean up previous error messages if any
+    if 'error_message_id' in context.user_data:
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data.pop('error_message_id'))
+        except Exception as e:
+            logger.info(f"Could not delete error_message_id: {e}")
+
+    async def resend_prompt(context):
+        keyboard = [[InlineKeyboardButton("Авто", callback_data='auto')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
+            reply_markup=reply_markup
+        )
+        context.user_data['shorts_number_message_id'] = message.message_id
+
     try:
         number = int(update.message.text)
         balance = context.user_data.get('balance', 0)
 
-        if 'error_message_id' in context.user_data:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=context.user_data['error_message_id'])
-            del context.user_data['error_message_id']
-
         if number <= 0:
-            msg = await update.message.reply_text("Пожалуйста, введите положительное число.")
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="Пожалуйста, введите положительное число.")
             context.user_data['error_message_id'] = msg.message_id
+            await resend_prompt(context)
             return GET_SHORTS_NUMBER
         
         if number > balance:
-            msg = await update.message.reply_text(f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.")
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.")
             context.user_data['error_message_id'] = msg.message_id
+            await resend_prompt(context)
             return GET_SHORTS_NUMBER
 
         context.user_data['config']['shorts_number'] = number
@@ -95,11 +125,16 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Выберите сетку шортса:", reply_markup=reply_markup)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Выберите сетку шортса:",
+            reply_markup=reply_markup
+        )
         return GET_LAYOUT
     except ValueError:
-        msg = await update.message.reply_text("Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
+        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
         context.user_data['error_message_id'] = msg.message_id
+        await resend_prompt(context)
         return GET_SHORTS_NUMBER
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -220,7 +255,6 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
         return GET_SUBTITLE_STYLE
-
 
 
 

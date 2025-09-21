@@ -24,6 +24,17 @@ logger = logging.getLogger(__name__)
 
 async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет URL и запрашивает количество шортсов."""
+    balance = context.user_data.get('balance', 0)
+    if balance <= 0:
+        topup_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+        ])
+        await update.message.reply_text(
+            "У вас закончились шортсы. Пожалуйста, пополните баланс.",
+            reply_markup=topup_keyboard
+        )
+        return ConversationHandler.END
+
     url = update.message.text
     if "youtube.com/" not in url and "youtu.be/" not in url:
         await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на YouTube видео.")

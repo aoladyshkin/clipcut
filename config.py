@@ -10,12 +10,13 @@ CRYPTO_DISCOUNTS = {
 
 # Pricing for Telegram Stars
 STARS_PACKAGES = [
-    {"shorts": 1, "stars": 10},
-    {"shorts": 3, "stars": 28},
-    {"shorts": 5, "stars": 50},
-    {"shorts": 10, "stars": 95},
-    {"shorts": 25, "stars": 225},
-    {"shorts": 50, "stars": 400},
-    {"shorts": 70, "stars": 550},
-    {"shorts": 100, "stars": 700},
+    {"shorts": 1, "stars": 59},
+    {"shorts": 3, "stars": 149},
+    {"shorts": 5, "stars": 299},
+    {"shorts": 10, "stars": 499},
+    {"shorts": 25, "stars": 1199},
+    {"shorts": 50, "stars": 1749},
+    {"shorts": 70, "stars": 2099},
+    {"shorts": 100, "stars": 2499},
 ]
+

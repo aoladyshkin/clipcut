@@ -19,6 +19,7 @@ from states import (
     GET_TOPUP_PACKAGE,
     GET_CRYPTO_AMOUNT
 )
+from config import STARS_PACKAGES, TUTORIAL_LINK
 
 logger = logging.getLogger(__name__)
 
@@ -327,7 +328,8 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data['balance'] = balance
     
     await query.edit_message_text(
-        f"Настройки отменены. У вас на балансе {balance} шортсов.\nПришли мне ссылку на YouTube видео, чтобы начать заново."
+        f"Настройки отменены. Пришли мне ссылку на YouTube видео, чтобы начать заново.\n Ваш баланс: {balance} шортсов.\n\n👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>",
+        parse_mode="HTML"
     )
     return GET_URL
 
@@ -345,8 +347,6 @@ async def back_to_topup_method(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
     return GET_TOPUP_METHOD
-
-from config import STARS_PACKAGES
 
 async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Shows the available packages for Telegram Stars top-up."""

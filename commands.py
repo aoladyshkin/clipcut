@@ -7,6 +7,7 @@ from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids
 from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
+from config import TUTORIAL_LINK
 
 # Configure logging
 logging.basicConfig(
@@ -51,7 +52,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['balance'] = balance
     
     await update.message.reply_text(
-        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok.\n\nУ вас на балансе {balance} шортсов."
+        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok.\nВаш баланс: {balance} шортсов.\n\n👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>",
+        parse_mode="HTML"
     )
     return GET_URL
 

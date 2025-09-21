@@ -20,3 +20,4 @@ STARS_PACKAGES = [
     {"shorts": 100, "stars": 2499},
 ]
 
+TUTORIAL_LINK = "https://telegra.ph/Kak-sdelat-virusnyj-Shorts-za-5-minut-09-20"

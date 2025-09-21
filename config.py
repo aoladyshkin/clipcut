@@ -1,7 +1,7 @@
 # config.py
 
 REGULAR_PRICES = {
-    "crypto_price_per_short": 0.1,
+    "crypto_price_per_short": 1.0,
     "crypto_discounts": {
         25: 0.05,  # 5% discount for 25 or more shorts
         50: 0.1   # 10% discount for 50 or more shorts
@@ -23,7 +23,7 @@ TUTORIAL_LINK = "https://telegra.ph/Kak-sdelat-virusnyj-Shorts-za-5-minut-09-20"
 # --- Discount Prices ---
 
 DISCOUNT_PRICES = {
-    "crypto_price_per_short": 0.08,
+    "crypto_price_per_short": 0.8,
     "crypto_discounts": {
         25: 0.05,
         50: 0.1

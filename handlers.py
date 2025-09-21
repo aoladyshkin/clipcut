@@ -17,7 +17,8 @@ from states import (
     GET_SHORTS_NUMBER,
     GET_TOPUP_METHOD,
     GET_TOPUP_PACKAGE,
-    GET_CRYPTO_AMOUNT
+    GET_CRYPTO_AMOUNT,
+    CRYPTO_PAYMENT
 )
 from datetime import datetime, timezone
 from config import REGULAR_PRICES, DISCOUNT_PRICES
@@ -504,7 +505,7 @@ async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         keyboard = [
             [InlineKeyboardButton("Оплатить", url=payment_url)],
             [InlineKeyboardButton("Проверить платёж", callback_data=payload)],
-            [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
+            [InlineKeyboardButton("❌ Отмена", callback_data='back_to_topup_method')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -513,13 +514,13 @@ async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             reply_markup=reply_markup
         )
         
-        return ConversationHandler.END
+        return CRYPTO_PAYMENT
 
     except ValueError:
         await update.message.reply_text("Пожалуйста, введите целое число.")
         return GET_CRYPTO_AMOUNT
 
-async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Checks the crypto payment and updates the balance."""
     query = update.callback_query
     await query.answer()
@@ -552,19 +553,23 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
                 await query.edit_message_text(
                     f"Оплата прошла успешно! Ваш баланс пополнен на {amount} шортсов. \nНовый баланс: {new_balance} шортсов."
                 )
+                return ConversationHandler.END
             else:
                 msg = await context.bot.send_message(chat_id=user_id, text="Платёж не найден или еще не прошел. Попробуйте проверить еще раз через несколько секунд.")
                 if 'payment_not_found_messages' not in context.user_data:
                     context.user_data['payment_not_found_messages'] = []
                 context.user_data['payment_not_found_messages'].append(msg.message_id)
+                return CRYPTO_PAYMENT
 
         except Exception as e:
             logger.error(f"Error checking crypto payment with aiocryptopay: {e}", exc_info=True)
             await query.edit_message_text("Произошла ошибка при связи с платежной системой. Пожалуйста, попробуйте еще раз позже.")
+            return CRYPTO_PAYMENT
 
     except (ValueError, IndexError) as e:
         logger.error(f"Error checking crypto payment: {e}", exc_info=True)
         await query.edit_message_text("Произошла ошибка при проверке платежа. Пожалуйста, попробуйте еще раз.")
+        return CRYPTO_PAYMENT
 
 async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels the top-up process."""

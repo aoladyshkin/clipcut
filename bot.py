@@ -7,7 +7,7 @@ import asyncio
 
 from conversation import get_conv_handler
 from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount
-from handlers import precheckout_callback, successful_payment_callback, check_crypto_payment
+from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
 from analytics import init_analytics_db, log_event
 
@@ -224,7 +224,6 @@ def main():
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
     application.add_handler(CommandHandler("start_discount", start_discount))
     application.add_handler(CommandHandler("end_discount", end_discount))
-    application.add_handler(CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 

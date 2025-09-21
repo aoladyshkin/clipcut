@@ -45,7 +45,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
 
     if balance <= 0:
-        await update.message.reply_text("У вас закончились шортсы. Пожалуйста, пополните баланс.")
+        topup_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+        ])
+        await update.message.reply_text("У вас закончились шортсы. Пожалуйста, пополните баланс.", reply_markup=topup_keyboard)
         return ConversationHandler.END
 
     context.user_data.clear()

@@ -269,8 +269,12 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if isinstance(shorts_number, int):
         if balance < shorts_number:
+            topup_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+            ])
             await query.edit_message_text(
-                f"На вашем балансе ({balance}) недостаточно шортсов для генерации {shorts_number} видео. Пожалуйста, пополните баланс или выберите меньшее количество."
+                f"На вашем балансе ({balance}) недостаточно шортсов для генерации {shorts_number} видео. Пожалуйста, пополните баланс или выберите меньшее количество.",
+                reply_markup=topup_keyboard
             )
             return ConversationHandler.END
     elif shorts_number == 'auto':
@@ -522,4 +526,5 @@ async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     query = update.callback_query
     await query.answer()
     await query.delete_message()
+    return ConversationHandler.ENDte_message()
     return ConversationHandler.END

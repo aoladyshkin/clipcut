@@ -53,23 +53,31 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot, status_message
     if isinstance(shorts_to_generate, int) and current_balance < shorts_to_generate:
         logger.warning(f"Отмена задачи для чата {chat_id}: недостаточный баланс. "
                        f"Требуется: {shorts_to_generate}, в наличии: {current_balance}")
+        topup_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+        ])
         await bot.send_message(
             chat_id,
             f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
             f"недостаточно средств для создания {shorts_to_generate} видео. "
             f"Пожалуйста, пополните баланс.",
-            reply_to_message_id=status_message_id
+            reply_to_message_id=status_message_id,
+            reply_markup=topup_keyboard
         )
         return
 
     # Проверяем, если баланс нулевой (даже для режима 'авто')
     if current_balance <= 0:
         logger.warning(f"Отмена задачи для чата {chat_id}: нулевой баланс.")
+        topup_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+        ])
         await bot.send_message(
             chat_id,
             f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
             f"Пожалуйста, пополните баланс.",
-            reply_to_message_id=status_message_id
+            reply_to_message_id=status_message_id,
+            reply_markup=topup_keyboard
         )
         return
 

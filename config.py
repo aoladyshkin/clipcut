@@ -25,8 +25,9 @@ TUTORIAL_LINK = "https://telegra.ph/Kak-sdelat-virusnyj-Shorts-za-5-minut-09-20"
 DISCOUNT_PRICES = {
     "crypto_price_per_short": 0.8,
     "crypto_discounts": {
-        25: 0.05,
-        50: 0.1
+        10: 0.01,
+        25: 0.03,
+        50: 0.05
     },
     "stars_packages": [
         {"shorts": 1, "stars": 47},

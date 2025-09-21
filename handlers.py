@@ -270,8 +270,14 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     context.user_data.clear()
     context.user_data['config'] = {}
+
+    # Re-fetch balance
+    user_id = query.from_user.id
+    _, balance, _, _ = get_user(user_id)
+    context.user_data['balance'] = balance
+    
     await query.edit_message_text(
-        "Пришли мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики."
+        f"Настройки отменены. У вас на балансе {balance} шортсов.\nПришли мне ссылку на YouTube видео, чтобы начать заново."
     )
     return GET_URL
 

@@ -42,12 +42,39 @@ async def processing_worker(queue: asyncio.Queue, bot: Bot):
 
 async def run_processing(chat_id: int, user_data: dict, bot: Bot):
     """Асинхронно запускает обработку видео и отправляет результат."""
+    from database import get_user # Локальный импорт для избежания циклических зависимостей
+
+    # --- Проверка баланса перед началом обработки ---
+    _, current_balance, _, _ = get_user(chat_id)
+    shorts_to_generate = user_data.get('config', {}).get('shorts_number')
+
+    # Проверяем, если указано конкретное число шортсов
+    if isinstance(shorts_to_generate, int) and current_balance < shorts_to_generate:
+        logger.warning(f"Отмена задачи для чата {chat_id}: недостаточный баланс. "
+                       f"Требуется: {shorts_to_generate}, в наличии: {current_balance}")
+        await bot.send_message(
+            chat_id,
+            f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
+            f"недостаточно средств для создания {shorts_to_generate} видео. "
+            f"Пожалуйста, пополните баланс."
+        )
+        return
+
+    # Проверяем, если баланс нулевой (даже для режима 'авто')
+    if current_balance <= 0:
+        logger.warning(f"Отмена задачи для чата {chat_id}: нулевой баланс.")
+        await bot.send_message(
+            chat_id,
+            f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
+            f"Пожалуйста, пополните баланс."
+        )
+        return
+
     await bot.send_message(chat_id, "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время.")
 
     main_loop = asyncio.get_running_loop()
 
     async def send_status_update_async(status_text: str):
-        # Просто отправляем новое сообщение, так как редактирование может быть сложным
         await bot.send_message(
             chat_id=chat_id,
             text=f"{status_text}"
@@ -81,6 +108,7 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
     try:
         delete_output = os.environ.get("DELETE_OUTPUT_AFTER_SENDING", "false").lower() == "true"
         
+        # Передаем актуальный баланс в функцию обработки
         shorts_generated_count = await asyncio.to_thread(
             process_video,
             user_data['url'],
@@ -88,7 +116,7 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             send_status_update,
             send_video_callback,
             delete_output,
-            user_balance=user_data.get('balance')
+            user_balance=current_balance # Используем актуальный баланс
         )
 
         if shorts_generated_count > 0:

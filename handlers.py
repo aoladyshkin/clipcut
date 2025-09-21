@@ -282,7 +282,8 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     processing_queue = context.bot_data['processing_queue']
     task_data = {
         'chat_id': query.message.chat.id,
-        'user_data': context.user_data.copy()
+        'user_data': context.user_data.copy(),
+        'status_message_id': query.message.message_id
     }
     log_event(query.message.chat.id, 'generation_start', {'url': context.user_data['url'], 'config': context.user_data['config']})
     await processing_queue.put(task_data)

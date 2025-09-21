@@ -25,10 +25,11 @@ async def processing_worker(queue: asyncio.Queue, bot: Bot):
         task_data = await queue.get()
         chat_id = task_data['chat_id']
         user_data = task_data['user_data']
+        status_message_id = task_data.get('status_message_id')
         
         try:
             logger.info(f"Начинаю обработку задачи для чата {chat_id}")
-            await run_processing(chat_id, user_data, bot)
+            await run_processing(chat_id, user_data, bot, status_message_id)
         except Exception as e:
             logger.error(f"Ошибка в воркере для чата {chat_id}: {e}", exc_info=True)
             try:
@@ -40,7 +41,7 @@ async def processing_worker(queue: asyncio.Queue, bot: Bot):
             logger.info(f"Завершена обработка задачи для чата {chat_id}. Задач в очереди: {queue.qsize()}")
 
 
-async def run_processing(chat_id: int, user_data: dict, bot: Bot):
+async def run_processing(chat_id: int, user_data: dict, bot: Bot, status_message_id: int = None):
     """Асинхронно запускает обработку видео и отправляет результат."""
     from database import get_user # Локальный импорт для избежания циклических зависимостей
 
@@ -56,7 +57,8 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             chat_id,
             f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
             f"недостаточно средств для создания {shorts_to_generate} видео. "
-            f"Пожалуйста, пополните баланс."
+            f"Пожалуйста, пополните баланс.",
+            reply_to_message_id=status_message_id
         )
         return
 
@@ -66,19 +68,37 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
         await bot.send_message(
             chat_id,
             f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
-            f"Пожалуйста, пополните баланс."
+            f"Пожалуйста, пополните баланс.",
+            reply_to_message_id=status_message_id
         )
         return
 
-    await bot.send_message(chat_id, "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время.")
+    try:
+        processing_message = await bot.send_message(
+            chat_id, 
+            "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время.",
+            reply_to_message_id=status_message_id
+        )
+        edit_message_id = processing_message.message_id
+    except Exception:
+        processing_message = await bot.send_message(
+            chat_id, 
+            "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время."
+        )
+        edit_message_id = processing_message.message_id
 
     main_loop = asyncio.get_running_loop()
 
     async def send_status_update_async(status_text: str):
-        await bot.send_message(
-            chat_id=chat_id,
-            text=f"{status_text}"
-        )
+        try:
+            await bot.send_message(
+                text=status_text,
+                chat_id=chat_id,
+                reply_to_message_id=status_message_id
+            )
+        except Exception as e:
+            logger.warning(f"Не удалось отредактировать сообщение о статусе: {e}. Отправляю новое.")
+            await bot.send_message(chat_id=chat_id, text=status_text)
 
     def send_status_update(status_text: str):
         asyncio.run_coroutine_threadsafe(send_status_update_async(status_text), main_loop)
@@ -96,11 +116,12 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
                     height=1280, 
                     supports_streaming=True,
                     read_timeout=600,
-                    write_timeout=600
+                    write_timeout=600,
+                    reply_to_message_id=edit_message_id
                 )
         except Exception as e:
             logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
-            await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}")
+            await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}", reply_to_message_id=edit_message_id)
 
     def send_video_callback(file_path, hook, start, end):
         return asyncio.run_coroutine_threadsafe(send_video_async(file_path, hook, start, end), main_loop)
@@ -108,7 +129,6 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
     try:
         delete_output = os.environ.get("DELETE_OUTPUT_AFTER_SENDING", "false").lower() == "true"
         
-        # Передаем актуальный баланс в функцию обработки
         shorts_generated_count = await asyncio.to_thread(
             process_video,
             user_data['url'],
@@ -116,7 +136,7 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             send_status_update,
             send_video_callback,
             delete_output,
-            user_balance=current_balance # Используем актуальный баланс
+            user_balance=current_balance
         )
 
         if shorts_generated_count > 0:
@@ -128,14 +148,16 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
             await bot.send_message(
                 chat_id=chat_id,
                 text=f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.",
-                parse_mode="HTML"
+                parse_mode="HTML",
+                reply_to_message_id=edit_message_id
             )
         else:
             log_event(chat_id, 'generation_error', {'url': user_data['url'], 'config': user_data['config'], 'error': 'No shorts generated'})
             await bot.send_message(
                 chat_id=chat_id,
                 text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился.",
-                parse_mode="HTML"
+                parse_mode="HTML",
+                reply_to_message_id=edit_message_id
             )
 
 
@@ -144,7 +166,8 @@ async def run_processing(chat_id: int, user_data: dict, bot: Bot):
         log_event(chat_id, 'generation_error', {'url': user_data.get('url'), 'config': user_data.get('config'), 'error': str(e)})
         await bot.send_message(
             chat_id=chat_id,
-            text=f"Произошла критическая ошибка во время обработки видео: {e}"
+            text=f"Произошла критическая ошибка во время обработки видео: {e}",
+            reply_to_message_id=edit_message_id
         )
 
 async def post_init_hook(application: Application):

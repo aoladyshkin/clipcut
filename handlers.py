@@ -373,7 +373,7 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             old_price = old_packages[i]['stars']
             new_price = new_package['stars']
             shorts = new_package['shorts']
-            button_text = f"{shorts} шортсов - ~{old_price}~ → {new_price} ⭐️"
+            button_text = f"{shorts} шортсов: {old_price} → {new_price} ⭐️"
             button = InlineKeyboardButton(button_text, callback_data=f'topup_{shorts}_{new_price}')
             keyboard.append([button])
     else:
@@ -382,7 +382,7 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         for package in packages:
             shorts = package['shorts']
             stars = package['stars']
-            button = InlineKeyboardButton(f"{shorts} шортсов - {stars} ⭐️", callback_data=f'topup_{shorts}_{stars}')
+            button = InlineKeyboardButton(f"{shorts} шортсов: {stars} ⭐️", callback_data=f'topup_{shorts}_{stars}')
             keyboard.append([button])
     
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')])

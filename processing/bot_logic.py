@@ -75,8 +75,9 @@ def gpt_gpt_prompt(shorts_number):
 Сжатость — зритель должен понять суть за первые 3 секунды ролика.
 
 Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст)
-Ответ — СТРОГО JSON-массив:\n
-[{\"start\":\"SS.S\",\"end\":\"SS.S\",\"hook\":\"кликабельный заголовок\"}]
+Ответ — СТРОГО JSON-массив:
+
+[{"start":"SS.S","end":"SS.S","hook":"кликабельный заголовок"}]
 
 В hook не используй начало транскрипта. Пиши готовый кликбейт-заголовок.
 Убедись, что каждый клип дольше 10 секунд.
@@ -161,7 +162,7 @@ def merge_video_audio(video_path, audio_path, output_path):
         
     return output_path
 
-def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto', user_balance: int = None):
+def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
     Делает запрос в Responses API (модель gpt-5) с включённым File Search.
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
@@ -205,9 +206,6 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         "end":   format_seconds_to_hhmmss(float(it["end"])),
         "hook":  it["hook"]
     } for it in data]
-
-    if shorts_number == 'auto' and user_balance is not None and len(items) > user_balance:
-        items = items[:user_balance]
 
     return items
 
@@ -420,23 +418,31 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     if not transcript_segments:
         print("Не удалось получить транскрипцию.")
-        return 0
+        return 0, 0
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number, user_balance=user_balance)
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
         if status_callback:
             status_callback("GPT не смог выделить подходящие отрезки для шортсов.")
-        return 0
+        return 0, 0
+
+    if user_balance is None:
+        user_balance = len(shorts_timecodes)
+
+    num_to_process = min(len(shorts_timecodes), user_balance)
+    shorts_to_process = shorts_timecodes[:num_to_process]
+    extra_found = len(shorts_timecodes) - num_to_process
+
     if status_callback:
-        status_callback(f"🔥 Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаем короткие ролики...")
+        status_callback(f"🔥 Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаем {num_to_process} коротких роликов...")
     print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
-    futures = process_video_clips(config, video_full, audio_only, shorts_timecodes, transcript_segments, out_dir, send_video_callback)
+    futures = process_video_clips(config, video_full, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
     
     if futures:
         for future in futures:
@@ -451,7 +457,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shutil.rmtree(out_dir)
         print(f"🗑️ Папка {out_dir} удалена.")
 
-    return len(shorts_timecodes)
+    return num_to_process, extra_found
 
 
 if __name__ == "__main__":

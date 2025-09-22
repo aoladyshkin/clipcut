@@ -16,8 +16,11 @@ from handlers import (
     send_invoice_for_stars,
     get_crypto_amount,
     back_to_topup_method,
-    check_crypto_payment
-)
+    check_crypto_payment,
+    handle_rating,
+    handle_feedback,
+    skip_feedback
+) 
 from states import (
     GET_URL,
     GET_SUBTITLE_STYLE,
@@ -30,7 +33,10 @@ from states import (
     GET_TOPUP_PACKAGE,
     GET_CRYPTO_AMOUNT,
     GET_BROADCAST_MESSAGE,
-    CRYPTO_PAYMENT
+    CRYPTO_PAYMENT,
+    RATING,
+    FEEDBACK,
+    PROCESSING
 )
 
 def get_conv_handler():
@@ -62,6 +68,13 @@ def get_conv_handler():
             CONFIRM_CONFIG: [
                 CallbackQueryHandler(confirm_config, pattern='^confirm'),
                 CallbackQueryHandler(cancel_conversation, pattern='^cancel'),
+            ],
+            PROCESSING: [
+                CallbackQueryHandler(handle_rating, pattern='^rate_')
+            ],
+            FEEDBACK: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_feedback),
+                CallbackQueryHandler(skip_feedback, pattern='^skip_feedback')
             ],
             GET_TOPUP_METHOD: [
                 CallbackQueryHandler(topup_stars, pattern='^topup_stars'),

@@ -18,10 +18,13 @@ from states import (
     GET_TOPUP_METHOD,
     GET_TOPUP_PACKAGE,
     GET_CRYPTO_AMOUNT,
-    CRYPTO_PAYMENT
+    CRYPTO_PAYMENT,
+    RATING,
+    FEEDBACK,
+    PROCESSING
 )
 from datetime import datetime, timezone
-from config import REGULAR_PRICES, DISCOUNT_PRICES
+from config import REGULAR_PRICES, DISCOUNT_PRICES, FEEDBACK_GROUP_ID
 
 logger = logging.getLogger(__name__)
 
@@ -322,7 +325,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         parse_mode="HTML"
     )
 
-    return ConversationHandler.END
+    return PROCESSING
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отменяет текущую конфигурацию и возвращает к началу."""
@@ -577,4 +580,57 @@ async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     query = update.callback_query
     await query.answer()
     await query.delete_message()
+    return ConversationHandler.END
+
+async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the user's rating and asks for text feedback."""
+    query = update.callback_query
+    await query.answer()
+    rating = query.data.split('_')[1]
+    log_event(query.from_user.id, 'rating', {'rating': rating})
+    
+    context.user_data['rating'] = rating
+
+    keyboard = [[InlineKeyboardButton("Пропустить", callback_data='skip_feedback')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        text="Спасибо за оценку! Оставьте, пожалуйста, текстовый отзыв, чтобы мы могли стать лучше.",
+        reply_markup=reply_markup
+    )
+    return FEEDBACK
+
+async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the user's text feedback and forwards it."""
+    feedback_text = update.message.text
+    user_id = update.message.from_user.id
+    rating = context.user_data.get('rating')
+
+    log_event(user_id, 'feedback', {'rating': rating, 'feedback': feedback_text})
+
+    if FEEDBACK_GROUP_ID:
+        try:
+            await context.bot.forward_message(
+                chat_id=FEEDBACK_GROUP_ID,
+                from_chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+            # Optionally, send the rating as well
+            await context.bot.send_message(
+                chat_id=FEEDBACK_GROUP_ID,
+                text=f"Пользователь {user_id} поставил оценку: {rating}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
+
+    await update.message.reply_text("Спасибо за ваш отзыв!")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Skips the text feedback step."""
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("Спасибо за вашу оценку!")
+    context.user_data.clear()
     return ConversationHandler.END

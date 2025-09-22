@@ -4,7 +4,7 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
-from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids
+from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user
 from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
 from config import TUTORIAL_LINK
@@ -20,10 +20,37 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
     user_id = update.effective_user.id
-    _, balance, _, is_new = get_user(user_id)
+    
+    referrer_id = None
+    if context.args and context.args[0].startswith('ref_'):
+        try:
+            referrer_id = int(context.args[0].split('_')[1])
+        except (IndexError, ValueError):
+            referrer_id = None
+
+    _, balance, _, is_new = get_user(user_id, referrer_id=referrer_id)
 
     if is_new:
-        log_event(user_id, 'new_user', {'username': update.effective_user.username})
+        log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id})
+        if referrer_id and referrer_id != user_id:
+            # Award bonuses
+            add_to_user_balance(user_id, 10)
+            add_to_user_balance(referrer_id, 10)
+            
+            # Update local balance for the new user
+            balance += 10
+            
+            await update.message.reply_text("🎉 Добро пожаловать! Вы получили 10 бонусных шортсов за использование реферальной ссылки.")
+            
+            try:
+                # Try to get the new user's username to mention them
+                new_user_mention = f"@{update.effective_user.username}" if update.effective_user.username else f"пользователь {user_id}"
+                await context.bot.send_message(
+                    chat_id=referrer_id,
+                    text=f"🎉 Ваш друг {new_user_mention} присоединился по вашей ссылке! Вы получили 10 бонусных шортсов."
+                )
+            except Exception as e:
+                logger.error(f"Failed to send referral notification to {referrer_id}: {e}")
 
     # Set commands for the user
     admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
@@ -36,6 +63,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         BotCommand(command="help", description="Помощь и описание"),
         BotCommand(command="balance", description="Показать баланс"),
         BotCommand(command="topup", description="Пополнить баланс"),
+        BotCommand(command="referral", description="Пригласить друга"),
     ]
     if str(user_id) in admin_ids:
         logger.info("User is an admin, adding admin commands.")
@@ -44,6 +72,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         base_commands.append(BotCommand(command="broadcast", description="Сделать рассылку"))
         base_commands.append(BotCommand(command="start_discount", description="Начать скидку"))
         base_commands.append(BotCommand(command="end_discount", description="Завершить скидку"))
+        base_commands.append(BotCommand(command="rm_user", description="Удалить пользователя"))
     
     await context.bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
@@ -60,6 +89,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return GET_URL
 
+async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Sends the user their referral link."""
+    user_id = update.effective_user.id
+    bot_username = context.bot.username
+    referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+    
+    await update.message.reply_text(
+        "Пригласите друга и получите по 10 шортсов каждый!\n\n"
+        "Отправьте эту ссылку другу:\n"
+        f"`{referral_link}`",
+        parse_mode="Markdown"
+    )
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет сообщение с помощью и списком команд."""
     help_text = (
@@ -69,6 +111,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/help - Показать это сообщение\n"
         "/balance - Показать текущий баланс\n"
         "/topup - Пополнить баланс\n"
+        "/referral - Пригласить друга\n"
         "@sf_tsupport_bot - по вопросам и поддержке\n\n"
         f"👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>"
     )
@@ -239,3 +282,21 @@ async def end_discount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     context.bot_data.pop('discount_end_time', None)
     
     await update.message.reply_text("✅ Скидка завершена.")
+
+async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Removes a user from the database."""
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    if str(update.effective_user.id) not in admin_ids:
+        return
+
+    try:
+        user_id_str = context.args[0]
+        user_id = int(user_id_str)
+
+        delete_user(user_id)
+
+        await update.message.reply_text(f"Пользователь {user_id} успешно удален.")
+
+    except (ValueError, IndexError):
+        await update.message.reply_text("Неверный формат команды. Используйте: /rm_user <user_id>")

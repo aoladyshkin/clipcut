@@ -115,7 +115,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "@sf_tsupport_bot - по вопросам и поддержке\n\n"
         f"👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>"
     )
-    await update.message.reply_text(help_text)
+    await update.message.reply_text(help_text, parse_mode="HTML")
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет текущий баланс пользователя."""

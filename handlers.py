@@ -1,6 +1,8 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import ContextTypes, ConversationHandler
+import uuid
+from telegram.error import TimedOut
 from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
@@ -236,15 +238,17 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return GET_SUBTITLES_TYPE
 
 async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет расположение и запрашивает фоновое видео (или пропускает, если main_only)."""
+    """Сохраняет расположение и запрашивает фоновое видео (или пропускает)."""
     query = update.callback_query
     await query.answer()
     layout_choice = query.data
     context.user_data['config']['layout'] = layout_choice
     logger.info(f"Config for {query.from_user.id}: layout = {layout_choice}")
 
+    await query.message.delete()
+
     if layout_choice in ['square_center', 'full_center']:
-        context.user_data['config']['bottom_video'] = None # Explicitly set to None
+        context.user_data['config']['bottom_video'] = None
         logger.info(f"Layout for {query.from_user.id} is {layout_choice}, skipping bottom video selection.")
         
         keyboard = [
@@ -255,13 +259,26 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.delete()
-        await context.bot.send_photo(
-            chat_id=query.message.chat_id,
-            photo=open(path_to_config_examples + 'subs_examples.png', 'rb'),
-            caption="Выберите, как показывать субтитры:",
-            reply_markup=reply_markup
-        )
+        
+        try:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=open(path_to_config_examples + 'subs_examples.png', 'rb'),
+                caption="Выберите, как показывать субтитры:",
+                reply_markup=reply_markup
+            )
+        except TimedOut:
+            logger.warning(f"Timeout error sending photo to {query.message.chat_id} in get_layout. Sending text fallback.")
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="Не удалось загрузить изображение. Выберите, как показывать субтитры:",
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Error sending photo in get_layout (if block): {e}", exc_info=True)
+            await context.bot.send_message(chat_id=query.message.chat_id, text="Произошла непредвиденная ошибка. Попробуйте начать заново: /start")
+            return ConversationHandler.END
+            
         return GET_SUBTITLES_TYPE
     else:
         keyboard = [
@@ -271,13 +288,26 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.message.delete()
-        await context.bot.send_photo(
-            chat_id=query.message.chat_id,
-            photo=open(path_to_config_examples + 'brainrot_examples.png', 'rb'),
-            caption="Выберите brainrot видео:",
-            reply_markup=reply_markup
-        )
+
+        try:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=open(path_to_config_examples + 'brainrot_examples.png', 'rb'),
+                caption="Выберите brainrot видео:",
+                reply_markup=reply_markup
+            )
+        except TimedOut:
+            logger.warning(f"Timeout error sending photo to {query.message.chat_id} in get_layout. Sending text fallback.")
+            await context.bot.send_message(
+                chat_id=query.message.chat_id,
+                text="Не удалось загрузить изображение. Выберите brainrot видео:",
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Error sending photo in get_layout (else block): {e}", exc_info=True)
+            await context.bot.send_message(chat_id=query.message.chat_id, text="Произошла непредвиденная ошибка. Попробуйте начать заново: /start")
+            return ConversationHandler.END
+
         return GET_BOTTOM_VIDEO
 
 async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -352,13 +382,23 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Пока что просто пропускаем, если баланс > 0, что уже проверено в start.
         pass
 
+    generation_id = str(uuid.uuid4())
+    context.user_data['generation_id'] = generation_id
+
     processing_queue = context.bot_data['processing_queue']
     task_data = {
         'chat_id': query.message.chat.id,
         'user_data': context.user_data.copy(),
         'status_message_id': query.message.message_id
     }
-    log_event(query.message.chat.id, 'generation_start', {'url': context.user_data['url'], 'config': context.user_data['config']})
+
+    event_data = {
+        'url': context.user_data['url'],
+        'config': context.user_data['config'],
+        'generation_id': generation_id
+    }
+    log_event(query.message.chat.id, 'generation_start', event_data)
+    
     await processing_queue.put(task_data)
     
     logger.info(f"Задача для чата {query.message.chat.id} добавлена в очередь. Задач в очереди: {processing_queue.qsize()}")

@@ -56,11 +56,13 @@
         "subtitle_style": "yellow",
         "force_ai_transcription": false,
         "capitalize_sentences": false
-      }
+      },
+      "generation_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
     }
     ```
     *   `url`: Ссылка на исходное YouTube видео.
     *   `config`: JSON-объект со всеми настройками, которые выбрал пользователь.
+    *   `generation_id`: Уникальный идентификатор сессии генерации.
 
 ---
 
@@ -73,11 +75,13 @@
     {
       "url": "https://youtube.com/watch?v=...",
       "config": { ... },
-      "generated_count": 3
+      "generated_count": 3,
+      "generation_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
     }
     ```
     *   `url`, `config`: Аналогично событию `generation_start`.
     *   `generated_count`: Количество фактически созданных шортсов.
+    *   `generation_id`: Уникальный идентификатор сессии генерации.
 
 ---
 
@@ -90,11 +94,13 @@
     {
       "url": "https://youtube.com/watch?v=...",
       "config": { ... },
-      "error": "Текст ошибки"
+      "error": "Текст ошибки",
+      "generation_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
     }
     ```
     *   `url`, `config`: Аналогично событию `generation_start`.
     *   `error`: Текстовое описание ошибки (например, "No shorts generated" или текст системного исключения).
+    *   `generation_id`: Уникальный идентификатор сессии генерации.
 
 ---
 

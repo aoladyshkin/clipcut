@@ -47,6 +47,8 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
     bot = application.bot
     from database import get_user # Локальный импорт для избежания циклических зависимостей
 
+    generation_id = user_data.get('generation_id')
+
     # --- Проверка баланса перед началом обработки ---
     _, current_balance, _, _ = get_user(chat_id)
     shorts_to_generate = user_data.get('config', {}).get('shorts_number')
@@ -157,7 +159,12 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             update_user_balance(chat_id, shorts_generated_count)
             logger.info(f"Баланс пользователя {chat_id} обновлен. Списано {shorts_generated_count} шортсов.")
             _, new_balance, _, _ = get_user(chat_id)
-            log_event(chat_id, 'generation_success', {'url': user_data['url'], 'config': user_data['config'], 'generated_count': shorts_generated_count})
+            log_event(chat_id, 'generation_success', {
+                'url': user_data['url'], 
+                'config': user_data['config'], 
+                'generated_count': shorts_generated_count,
+                'generation_id': generation_id
+            })
             
             final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.\nПополнить баланс – /topup"
             if extra_shorts_found > 0:
@@ -181,7 +188,12 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
                 reply_to_message_id=status_message_id
             )
         else:
-            log_event(chat_id, 'generation_error', {'url': user_data['url'], 'config': user_data['config'], 'error': 'No shorts generated'})
+            log_event(chat_id, 'generation_error', {
+                'url': user_data['url'], 
+                'config': user_data['config'], 
+                'error': 'No shorts generated',
+                'generation_id': generation_id
+            })
             await bot.send_message(
                 chat_id=chat_id,
                 text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился.",
@@ -192,7 +204,12 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
 
     except Exception as e:
         logger.error(f"Ошибка при обработке видео для чата {chat_id}: {e}", exc_info=True)
-        log_event(chat_id, 'generation_error', {'url': user_data.get('url'), 'config': user_data.get('config'), 'error': str(e)})
+        log_event(chat_id, 'generation_error', {
+            'url': user_data.get('url'), 
+            'config': user_data.get('config'), 
+            'error': str(e),
+            'generation_id': generation_id
+        })
         await bot.send_message(
             chat_id=chat_id,
             text=f"Произошла критическая ошибка во время обработки видео: {e}",

@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, P
 import asyncio
 
 from conversation import get_conv_handler
-from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, referral_command
+from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, referral_command, export_users_command
 from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
 from states import RATING
@@ -238,6 +238,7 @@ def main():
     application.add_handler(CommandHandler("rm_user", remove_user_command))
     application.add_handler(CommandHandler("start_discount", start_discount))
     application.add_handler(CommandHandler("end_discount", end_discount))
+    application.add_handler(CommandHandler("export_users", export_users_command))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 

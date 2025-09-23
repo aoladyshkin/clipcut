@@ -300,3 +300,41 @@ async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except (ValueError, IndexError):
         await update.message.reply_text("Неверный формат команды. Используйте: /rm_user <user_id>")
+
+# Added for user export command
+import csv
+import io
+from database import get_all_users_data
+
+async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Exports all users to a CSV file (admin only)."""
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    if str(update.effective_user.id) not in admin_ids:
+        await update.message.reply_text("This command is for admins only.")
+        return
+
+    await update.message.reply_text("Выгружаю данные... Это может занять несколько секунд.")
+
+    try:
+        users_data = get_all_users_data()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write header
+        writer.writerow(['user_id', 'balance', 'generated_shorts_count', 'referred_by'])
+        
+        # Write data
+        writer.writerows(users_data)
+        
+        output.seek(0)
+        
+        # Send the file
+        await update.message.reply_document(
+            document=io.BytesIO(output.getvalue().encode('utf-8')),
+            filename=f"users_export_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.csv"
+        )
+
+    except Exception as e:
+        await update.message.reply_text(f"Произошла ошибка при выгрузке данных: {e}")

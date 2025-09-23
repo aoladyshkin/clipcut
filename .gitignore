@@ -13,7 +13,6 @@ __pycache__/
 
 # Large media files
 keepers/
-fonts/
 
 # Large media files
 venv/

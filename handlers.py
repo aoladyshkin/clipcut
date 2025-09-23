@@ -28,6 +28,8 @@ from config import REGULAR_PRICES, DISCOUNT_PRICES, FEEDBACK_GROUP_ID
 
 logger = logging.getLogger(__name__)
 
+path_to_config_examples = "config_examples/"
+
 async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет URL и запрашивает количество шортсов."""
     balance = context.user_data.get('balance', 0)
@@ -75,11 +77,17 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
     keyboard = [
         [
             InlineKeyboardButton("1:1", callback_data='main_only'),
-            InlineKeyboardButton("1:1 + brainrot снизу", callback_data='top_bottom'),
+            InlineKeyboardButton("1:1 + brainrot", callback_data='top_bottom'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Выберите сетку шортса:", reply_markup=reply_markup)
+    await query.message.delete()
+    await context.bot.send_photo(
+        chat_id=query.message.chat_id,
+        photo=open(path_to_config_examples + 'layout_examples.png', 'rb'),
+        caption="Выберите сетку шортса:",
+        reply_markup=reply_markup
+    )
     return GET_LAYOUT
 
 
@@ -149,9 +157,10 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await context.bot.send_message(
+        await context.bot.send_photo(
             chat_id=update.effective_chat.id,
-            text="Выберите сетку шортса:",
+            photo=open(path_to_config_examples + 'layout_examples.png', 'rb'),
+            caption="Выберите сетку шортса:",
             reply_markup=reply_markup
         )
         return GET_LAYOUT
@@ -183,7 +192,9 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.edit_message_text(
+    await query.message.delete()
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
         text=f"Подтвердите настройки:\n\n{settings_text}",
         reply_markup=reply_markup,
         parse_mode="HTML"
@@ -207,7 +218,13 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
+    await query.message.delete()
+    await context.bot.send_photo(
+        chat_id=query.message.chat_id,
+        photo=open(path_to_config_examples + 'subs_examples.png', 'rb'),
+        caption="Выберите, как показывать субтитры:",
+        reply_markup=reply_markup
+    )
     return GET_SUBTITLES_TYPE
 
 async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -230,7 +247,13 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text="Выберите, как показывать субтитры:", reply_markup=reply_markup)
+        await query.message.delete()
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(path_to_config_examples + 'subs_examples.png', 'rb'),
+            caption="Выберите, как показывать субтитры:",
+            reply_markup=reply_markup
+        )
         return GET_SUBTITLES_TYPE
     else:
         keyboard = [
@@ -240,7 +263,13 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text="Выберите brainrot видео:", reply_markup=reply_markup)
+        await query.message.delete()
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(path_to_config_examples + 'brainrot_examples.png', 'rb'),
+            caption="Выберите brainrot видео:",
+            reply_markup=reply_markup
+        )
         return GET_BOTTOM_VIDEO
 
 async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -266,7 +295,9 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await query.edit_message_text(
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
             text=f"<b>Подтвердите настройки:</b>\n\n{settings_text}",
             reply_markup=reply_markup,
             parse_mode="HTML"
@@ -277,7 +308,13 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
             [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text="Выберите цвет субтитров:", reply_markup=reply_markup)
+        await query.message.delete()
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(path_to_config_examples + 'subs_color_examples.png', 'rb'),
+            caption="Выберите цвет субтитров:",
+            reply_markup=reply_markup
+        )
         return GET_SUBTITLE_STYLE
 
 

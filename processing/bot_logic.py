@@ -497,7 +497,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = [{ "start": "00:02:54.0", "end": "00:03:12.2", "hook": "123" }, { "start": "00:01:54.0", "end": "00:01:57.2", "hook": "123" }, { "start": "00:02:44.0", "end": "00:02:52.2", "hook": "123" }]
+    # shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
@@ -518,9 +519,15 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     futures = process_video_clips(config, video_full, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
     
+    successful_sends = 0
     if futures:
         for future in futures:
-            future.result() # Ждем завершения отправки
+            try:
+                success = future.result() # this will block
+                if success:
+                    successful_sends += 1
+            except Exception as e:
+                print(f"A future failed when sending video: {e}")
 
     # если всё ок, можно удалить временный аудиофайл
     if os.path.exists(audio_only):
@@ -531,7 +538,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shutil.rmtree(out_dir)
         print(f"🗑️ Папка {out_dir} удалена.")
 
-    return num_to_process, extra_found
+    return successful_sends, extra_found
 
 
 if __name__ == "__main__":

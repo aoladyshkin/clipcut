@@ -129,10 +129,12 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
                     write_timeout=600,
                     reply_to_message_id=edit_message_id
                 )
+            return True
         except Exception as e:
             logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
             log_event(chat_id, 'send_video_error', {'file_path': file_path, 'error': str(e)})
             await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}", reply_to_message_id=edit_message_id)
+            return False
 
     def send_video_callback(file_path, hook, start, end):
         return asyncio.run_coroutine_threadsafe(send_video_async(file_path, hook, start, end), main_loop)
@@ -157,7 +159,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             _, new_balance, _, _ = get_user(chat_id)
             log_event(chat_id, 'generation_success', {'url': user_data['url'], 'config': user_data['config'], 'generated_count': shorts_generated_count})
             
-            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов. Пополнить - /topup"
+            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.\nПополнить баланс – /topup"
             if extra_shorts_found > 0:
                 final_message += f"\n\nℹ️ Найдено еще {extra_shorts_found} подходящих фрагментов, но на них не хватило баланса."
 

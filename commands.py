@@ -55,8 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Set commands for the user
     admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
     admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    logger.info(f"Admin IDs: {admin_ids}")
-    logger.info(f"User ID: {user_id}")
+    
 
     base_commands = [
         BotCommand(command="start", description="Начать работу"),

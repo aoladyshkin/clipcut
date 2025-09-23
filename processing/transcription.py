@@ -186,7 +186,7 @@ def normalize_segments(segs: List[Dict[str, float]], duration: Optional[float] =
             rs = min(rs, duration)
             re_ = min(re_, duration)
 
-        rounded.append({"start": rs, "end": re_, "text": s["text"]})
+        rounded.append({"start": rs, "end": min(re_, duration), "text": s["text"]})
 
     return rounded
 
@@ -212,13 +212,12 @@ def _to_caption_text(segs: List[Dict[str, float]]) -> str:
         lines.append(f"{a} --> {b}\n{seg['text']}\n")
     return "\n".join(lines).strip() + "\n"
 
-def write_captions_file(segments: List[Dict[str, float]], filename: str = "captions.txt", audio_duration: Optional[float] = None) -> Path:
+def write_captions_file(segments: List[Dict[str, float]], filename: str = "captions.txt",) -> Path:
     """
     Пишем captions в TXT (совместимо с OpenAI Files API).
     Округление и устранение пересечений выполняются через normalize_segments().
     """
-    segs_norm = normalize_segments(segments, duration=audio_duration)
-    txt = _to_caption_text(segs_norm)
+    txt = _to_caption_text(segments)
     out_path = Path(filename)
     out_path.write_text(txt, encoding="utf-8")
     print(f"\nСохранено в файл: {out_path.resolve()}")
@@ -342,12 +341,15 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
         except Exception as e:
             print(f"Не удалось получить субтитры с YouTube ({e}). Пытаемся через Whisper.")
             segments = transcribe_via_whisper(audio_path)
+            
+    segments = normalize_segments(segments, duration=audio_duration)
+    print(segments, audio_duration)
 
     # ЕДИНАЯ запись в TXT (нормализация внутри write_captions_file)
-    write_captions_file(segments, filename=(Path(out_dir) / "captions.txt"), audio_duration=audio_duration)
+    write_captions_file(segments, filename=(Path(out_dir) / "captions.txt"))
 
     # Вернём уже нормализованные сегменты, чтобы совпадали с тем, что в файле
-    return normalize_segments(segments, duration=audio_duration), chosen_code.replace("a.", "") if chosen_code else "ru"
+    return segments, chosen_code.replace("a.", "") if chosen_code else "ru"
 
 # ==== запуск ====
 if __name__ == "__main__":

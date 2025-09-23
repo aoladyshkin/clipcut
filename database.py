@@ -11,12 +11,19 @@ def initialize_database():
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 balance INTEGER NOT NULL DEFAULT 10,
-                generated_shorts_count INTEGER NOT NULL DEFAULT 0
+                generated_shorts_count INTEGER NOT NULL DEFAULT 0,
+                referred_by INTEGER
             )
         """)
-        conn.commit()
+        # Check if the referred_by column exists, and add it if it doesn't
+        try:
+            cursor.execute("SELECT referred_by FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
+            conn.commit()
+            print("Database schema updated: added 'referred_by' column to 'users' table.")
 
-def get_user(user_id: int) -> Optional[Tuple[int, int, int, bool]]:
+def get_user(user_id: int, referrer_id: Optional[int] = None) -> Optional[Tuple[int, int, int, bool]]:
     """
     Получает данные пользователя по user_id.
     Если пользователь не найден, создает его с балансом по умолчанию.
@@ -28,7 +35,7 @@ def get_user(user_id: int) -> Optional[Tuple[int, int, int, bool]]:
         user = cursor.fetchone()
         if user is None:
             # Пользователь не найден, создаем нового
-            cursor.execute("INSERT INTO users (user_id) VALUES (?)", (user_id,))
+            cursor.execute("INSERT INTO users (user_id, referred_by) VALUES (?, ?)", (user_id, referrer_id))
             conn.commit()
             # Возвращаем данные нового пользователя
             return user_id, 10, 0, True
@@ -77,6 +84,13 @@ def get_all_user_ids():
         cursor = conn.cursor()
         cursor.execute("SELECT user_id FROM users")
         return [row[0] for row in cursor.fetchall()]
+
+def delete_user(user_id: int):
+    """Удаляет пользователя из базы данных."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        conn.commit()
 
 # Убедимся, что база данных инициализируется при запуске
 initialize_database()

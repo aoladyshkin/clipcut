@@ -6,9 +6,10 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, P
 import asyncio
 
 from conversation import get_conv_handler
-from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount
+from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, referral_command
 from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
+from states import RATING
 from analytics import init_analytics_db, log_event
 
 # Настройка логирования
@@ -100,10 +101,10 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
 
     async def send_status_update_async(status_text: str):
         try:
-            await bot.edit_message_text(
-                text=f"⚡ Ваш запрос в работе.\n\n{status_text}",
+            await bot.send_message(
+                text=status_text,
                 chat_id=chat_id,
-                message_id=edit_message_id
+                reply_to_message_id=status_message_id,
             )
         except Exception as e:
             logger.warning(f"Не удалось отредактировать сообщение о статусе: {e}. Отправляю новое.")
@@ -163,7 +164,18 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
                 chat_id=chat_id,
                 text=final_message,
                 parse_mode="HTML",
-                reply_to_message_id=edit_message_id
+                reply_to_message_id=status_message_id
+            )
+
+            # Ask for rating
+            rating_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(str(i), callback_data=f'rate_{i}') for i in range(1, 6)]
+            ])
+            await bot.send_message(
+                chat_id=chat_id,
+                text="Оцените результат от 1 до 5",
+                reply_markup=rating_keyboard,
+                reply_to_message_id=status_message_id
             )
         else:
             log_event(chat_id, 'generation_error', {'url': user_data['url'], 'config': user_data['config'], 'error': 'No shorts generated'})
@@ -219,9 +231,11 @@ def main():
 
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("balance", balance_command))
+    application.add_handler(CommandHandler("referral", referral_command))
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("addshorts", add_shorts_command))
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
+    application.add_handler(CommandHandler("rm_user", remove_user_command))
     application.add_handler(CommandHandler("start_discount", start_discount))
     application.add_handler(CommandHandler("end_discount", end_discount))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))

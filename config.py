@@ -1,3 +1,10 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+FEEDBACK_GROUP_ID = os.environ.get("FEEDBACK_GROUP_ID")
+
 # config.py
 
 REGULAR_PRICES = {

@@ -76,11 +76,11 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
 
     keyboard = [
         [
-            InlineKeyboardButton("1:1 (квадрат)", callback_data='square_center'),
+            InlineKeyboardButton("1:1", callback_data='square_center'),
             InlineKeyboardButton("1:1 + brainrot", callback_data='square_top_brainrot_bottom'),
         ],
         [
-            InlineKeyboardButton("16:9 (по центру)", callback_data='full_center'),
+            InlineKeyboardButton("16:9", callback_data='full_center'),
             InlineKeyboardButton("16:9 + brainrot", callback_data='full_top_brainrot_bottom'),
         ]
     ]

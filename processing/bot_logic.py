@@ -339,22 +339,12 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
         subtitle_width = final_width - 40
 
     elif layout == 'full_top_brainrot_bottom':
-        # Main clip preparation to be 16:9
-        target_width = final_width
-        target_height = int(final_width * 9 / 16)
-        target_aspect = target_width / target_height
-
-        main_clip = main_clip_raw
-        if (main_clip.w / main_clip.h) > target_aspect:
-            main_clip = main_clip.resize(height=target_height)
-            main_clip = main_clip.fx(vfx.crop, x_center=main_clip.w / 2, width=target_width)
-        else:
-            main_clip = main_clip.resize(width=target_width)
-            main_clip = main_clip.fx(vfx.crop, y_center=main_clip.h / 2, height=target_height)
-
-        # New layout heights: 50/50 split
+        # Layout heights: 50/50 split
         video_container_height = final_height / 2
         bottom_height = final_height / 2
+
+        # Main clip preparation
+        main_clip = main_clip_raw.resize(width=final_width)
 
         # Position main_clip at the bottom of the top half
         main_clip_y_pos = video_container_height - main_clip.h
@@ -507,8 +497,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = [{'start': '00:01:21.4', 'end': '00:01:50.6', 'hook': '«Распилили и разошлись»: почему в России нет маркетинга'}, {'start': '00:02:03.0', 'end': '00:02:27.1', 'hook': 'Маркетинг = предпринимательство: формула, которую не понимают'}, {'start': '00:02:39.2', 'end': '00:02:51.6', 'hook': 'Даже на Марсе есть вода. А у нас — маркетинг?'}, {'start': '00:02:54.0', 'end': '00:03:12.2', 'hook': 'Как дотянуться до США: что нам ещё предстоит сделать'}]
-    # shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")

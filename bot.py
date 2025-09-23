@@ -157,7 +157,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             _, new_balance, _, _ = get_user(chat_id)
             log_event(chat_id, 'generation_success', {'url': user_data['url'], 'config': user_data['config'], 'generated_count': shorts_generated_count})
             
-            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов."
+            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов. Пополнить - /topup"
             if extra_shorts_found > 0:
                 final_message += f"\n\nℹ️ Найдено еще {extra_shorts_found} подходящих фрагментов, но на них не хватило баланса."
 

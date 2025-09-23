@@ -129,10 +129,9 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
                     write_timeout=600,
                     reply_to_message_id=edit_message_id
                 )
-            return True
         except Exception as e:
             logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
-            return False
+            await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}", reply_to_message_id=edit_message_id)
 
     def send_video_callback(file_path, hook, start, end):
         return asyncio.run_coroutine_threadsafe(send_video_async(file_path, hook, start, end), main_loop)

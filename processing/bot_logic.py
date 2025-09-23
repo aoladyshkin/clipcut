@@ -473,15 +473,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     futures = process_video_clips(config, video_full, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
     
-    successful_sends = 0
     if futures:
         for future in futures:
-            try:
-                success = future.result() # The result will be True or False
-                if success:
-                    successful_sends += 1
-            except Exception as e:
-                print(f"Error waiting for video send future: {e}")
+            future.result() # Ждем завершения отправки
 
     # если всё ок, можно удалить временный аудиофайл
     if os.path.exists(audio_only):
@@ -492,7 +486,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shutil.rmtree(out_dir)
         print(f"🗑️ Папка {out_dir} удалена.")
 
-    return successful_sends, extra_found
+    return num_to_process, extra_found
 
 
 if __name__ == "__main__":

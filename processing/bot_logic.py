@@ -312,7 +312,7 @@ def _extract_json_array(text: str) -> str:
     raise ValueError("Не удалось извлечь JSON-массив из ответа GPT.")
 
 def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, final_height):
-    if layout == 'top_bottom':
+    if layout == 'square_top_brainrot_bottom':
         video_height = int(final_height * 0.6)
         bottom_height = final_height - video_height
 
@@ -338,7 +338,52 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
         subtitle_y_pos = video_height - 60 # Сдвигаем субтитры вверх
         subtitle_width = final_width - 40
 
-    else: # main_only layout
+    elif layout == 'full_top_brainrot_bottom':
+        # Layout heights: 50/50 split
+        video_container_height = final_height / 2
+        bottom_height = final_height / 2
+
+        # Main clip preparation
+        main_clip = main_clip_raw.resize(width=final_width)
+
+        # Position main_clip at the bottom of the top half
+        main_clip_y_pos = video_container_height - main_clip.h
+        main_clip = main_clip.set_position(('center', main_clip_y_pos))
+
+        # Bottom clip preparation
+        if bottom_video_path:
+            full_bottom_clip = VideoFileClip(str(bottom_video_path))
+            if full_bottom_clip.duration > main_clip.duration:
+                random_start = random.uniform(0, full_bottom_clip.duration - main_clip.duration)
+                bottom_clip = full_bottom_clip.subclip(random_start, random_start + main_clip.duration)
+            else:
+                bottom_clip = full_bottom_clip
+
+            bottom_clip = bottom_clip.resize(height=bottom_height)
+            if bottom_clip.w > final_width:
+                bottom_clip = bottom_clip.fx(vfx.crop, x_center=bottom_clip.w / 2, width=final_width)
+            bottom_clip = bottom_clip.set_duration(main_clip.duration)
+        else:
+            bottom_clip = ColorClip(size=(final_width, bottom_height), color=(0,0,0), duration=main_clip.duration)
+
+        bottom_clip = bottom_clip.set_position(('center', 'bottom'))
+
+        # Create final canvas
+        bg = ColorClip(size=(final_width, final_height), color=(0,0,0), duration=main_clip.duration)
+        video_canvas = CompositeVideoClip([bg, main_clip, bottom_clip])
+
+        # Subtitles position
+        subtitle_y_pos = video_container_height - 60
+        subtitle_width = final_width - 40
+
+    elif layout == 'full_center':
+        main_clip = main_clip_raw.resize(width=final_width)
+        bg = ColorClip(size=(final_width, final_height), color=(0,0,0), duration=main_clip.duration)
+        video_canvas = CompositeVideoClip([bg, main_clip.set_position('center', 'center')])
+        subtitle_y_pos = (final_height + main_clip.h) / 2 + 20
+        subtitle_width = main_clip.w - 40
+
+    else: # square_center
         video_height = int(final_height * 0.7)
         main_clip = main_clip_raw.resize(height=video_height)
         if main_clip.w > final_width:
@@ -358,7 +403,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
 
     # --- Настройки из конфига ---
     subtitle_style = config.get('subtitle_style', 'white')
-    layout = config.get('layout', 'top_bottom')
+    layout = config.get('layout', 'square_top_brainrot_bottom')
     bottom_video_path = config.get('bottom_video_path')
     subtitles_type = config.get('subtitles_type', 'word-by-word')
 
@@ -473,9 +518,15 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     futures = process_video_clips(config, video_full, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
     
+    successful_sends = 0
     if futures:
         for future in futures:
-            future.result() # Ждем завершения отправки
+            try:
+                success = future.result() # this will block
+                if success:
+                    successful_sends += 1
+            except Exception as e:
+                print(f"A future failed when sending video: {e}")
 
     # если всё ок, можно удалить временный аудиофайл
     if os.path.exists(audio_only):
@@ -486,7 +537,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shutil.rmtree(out_dir)
         print(f"🗑️ Папка {out_dir} удалена.")
 
-    return num_to_process, extra_found
+    return successful_sends, extra_found
 
 
 if __name__ == "__main__":
@@ -499,8 +550,8 @@ if __name__ == "__main__":
         # Опции: 'gta', 'minecraft' или None для черного фона
         'bottom_video': 'minecraft', 
         
-        # Опции: 'top_bottom', 'main_only'
-        'layout': 'main_only',
+        # Опции: 'square_top_brainrot_bottom', 'square_center', 'full_top_brainrot_bottom', 'full_center'
+        'layout': 'full_center',
 
         # Опции: 'word-by-word', 'phrases'
         'subtitles_type': 'word-by-word',

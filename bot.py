@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, P
 import asyncio
 
 from conversation import get_conv_handler
-from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, referral_command
+from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, referral_command, export_users_command
 from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
 from states import RATING
@@ -129,9 +129,12 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
                     write_timeout=600,
                     reply_to_message_id=edit_message_id
                 )
+            return True
         except Exception as e:
             logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
+            log_event(chat_id, 'send_video_error', {'file_path': file_path, 'error': str(e)})
             await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}", reply_to_message_id=edit_message_id)
+            return False
 
     def send_video_callback(file_path, hook, start, end):
         return asyncio.run_coroutine_threadsafe(send_video_async(file_path, hook, start, end), main_loop)
@@ -156,7 +159,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             _, new_balance, _, _ = get_user(chat_id)
             log_event(chat_id, 'generation_success', {'url': user_data['url'], 'config': user_data['config'], 'generated_count': shorts_generated_count})
             
-            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов."
+            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.\nПополнить баланс – /topup"
             if extra_shorts_found > 0:
                 final_message += f"\n\nℹ️ Найдено еще {extra_shorts_found} подходящих фрагментов, но на них не хватило баланса."
 
@@ -238,6 +241,7 @@ def main():
     application.add_handler(CommandHandler("rm_user", remove_user_command))
     application.add_handler(CommandHandler("start_discount", start_discount))
     application.add_handler(CommandHandler("end_discount", end_discount))
+    application.add_handler(CommandHandler("export_users", export_users_command))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 

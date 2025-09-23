@@ -92,5 +92,12 @@ def delete_user(user_id: int):
         cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
         conn.commit()
 
+def get_all_users_data():
+    """Возвращает все данные из таблицы users."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id, balance, generated_shorts_count, referred_by FROM users")
+        return cursor.fetchall()
+
 # Убедимся, что база данных инициализируется при запуске
 initialize_database()

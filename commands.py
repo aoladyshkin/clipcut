@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
     user_id = update.effective_user.id
+    log_event(user_id, 'start_command', {'username': update.effective_user.username})
     
     referrer_id = None
     if context.args and context.args[0].startswith('ref_'):

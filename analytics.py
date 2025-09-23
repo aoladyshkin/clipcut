@@ -70,3 +70,25 @@ def log_event(user_id: int, event_type: str, data: dict):
         if client:
             client.disconnect()
 
+def clear_analytics_table():
+    """Clears all data from the analytics table."""
+    client = get_clickhouse_client()
+    if not client:
+        logger.error("ClickHouse client is not available. Cannot clear table.")
+        return
+
+    try:
+        logger.info(f"Clearing table {table_name}...")
+        client.execute(f"TRUNCATE TABLE {table_name}")
+        print(f"Successfully cleared table {table_name}.")
+        logger.info(f"Successfully cleared table {table_name}.")
+    except Exception as e:
+        print(f"Failed to clear {table_name} table: {e}")
+        logger.error(f"Failed to clear {table_name} table: {e}")
+    finally:
+        if client:
+            client.disconnect()
+            
+if __name__ == "__main__":
+    init_analytics_db()
+    # clear_analytics_table()  # Uncomment to clear the table

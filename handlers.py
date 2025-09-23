@@ -397,7 +397,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         'config': context.user_data['config'],
         'generation_id': generation_id
     }
-    log_event(query.message.chat.id, 'generation_start', event_data)
+    log_event(query.message.chat.id, 'generation_queued', event_data)
     
     await processing_queue.put(task_data)
     

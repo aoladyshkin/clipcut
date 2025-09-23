@@ -48,6 +48,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
     from database import get_user # Локальный импорт для избежания циклических зависимостей
 
     generation_id = user_data.get('generation_id')
+    log_event(chat_id, 'generation_start', {'generation_id': generation_id})
 
     # --- Проверка баланса перед началом обработки ---
     _, current_balance, _, _ = get_user(chat_id)
@@ -160,8 +161,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             logger.info(f"Баланс пользователя {chat_id} обновлен. Списано {shorts_generated_count} шортсов.")
             _, new_balance, _, _ = get_user(chat_id)
             log_event(chat_id, 'generation_success', {
-                'url': user_data['url'], 
-                'config': user_data['config'], 
+                'url': user_data['url'],
                 'generated_count': shorts_generated_count,
                 'generation_id': generation_id
             })

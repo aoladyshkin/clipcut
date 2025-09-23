@@ -395,7 +395,8 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     event_data = {
         'url': context.user_data['url'],
         'config': context.user_data['config'],
-        'generation_id': generation_id
+        'generation_id': generation_id,
+        'queue_position': processing_queue.qsize() + 1
     }
     log_event(query.message.chat.id, 'generation_queued', event_data)
     

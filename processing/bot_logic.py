@@ -28,6 +28,9 @@ from processing.subtitles import create_subtitle_clips, get_subtitle_items
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+from pytubefix import YouTube
+
+
 def format_seconds_to_hhmmss(seconds):
     seconds = float(seconds)
     h = int(seconds // 3600)
@@ -86,50 +89,76 @@ def gpt_gpt_prompt(shorts_number):
 
 # --- YouTube загрузка ---
 def download_video_only(url, video_path):
-    subprocess.run([
-        "python3", "-m", "yt_dlp",
-        "-f", "bestvideo[height<=720]",
-        "--user-agent", "Mozilla/5.0",
-        "-o", str(video_path),
-        url
-    ])
-    return video_path
+    """Downloads the best available video up to 720p using pytubefix."""
+    try:
+        yt = YouTube(url)
+        # Try to get a 720p stream, otherwise get the highest resolution video-only stream
+        stream = yt.streams.filter(res="720p", progressive=False, file_extension='mp4').first()
+        if not stream:
+            stream = yt.streams.filter(type="video", file_extension='mp4').order_by('resolution').desc().first()
+        
+        if not stream:
+            raise ConnectionError("No suitable MP4 video stream found by pytubefix.")
+
+        output_dir = Path(video_path).parent
+        file_name = Path(video_path).name
+        stream.download(output_path=str(output_dir), filename=file_name)
+        print(f"pytubefix: Video downloaded successfully to {video_path}")
+        return video_path
+    except Exception as e:
+        print(f"An error occurred with pytubefix while downloading video: {e}")
+        return None
 
 def download_audio_only(url, audio_path):
     """
-    Скачивает аудио с YouTube и конвертирует в мини-файл для Whisper-1:
-    - формат: .ogg
-    - кодек: opus
-    - моно
-    - частота дискретизации: 24 kHz
-    - битрейт: 32 kbps
+    Downloads audio using pytubefix and converts it for Whisper.
+    Falls back to yt-dlp if pytubefix fails.
     """
-
     audio_path = Path(audio_path).with_suffix(".ogg")
-    temp_path = audio_path.with_suffix(".temp.m4a")
+    temp_path = audio_path.with_suffix(".temp.mp4") # pytubefix often saves audio as .mp4
 
-    # 1. Скачиваем лучший аудиотрек
-    subprocess.run([
-        "python3", "-m", "yt_dlp",
-        "-f", "bestaudio",
-        "--user-agent", "Mozilla/5.0",
-        "-o", str(temp_path),
-        url
-    ], check=True)
+    try:
+        # 1. Download best audio track with pytubefix
+        print("Attempting to download audio with pytubefix...")
+        yt = YouTube(url)
+        stream = yt.streams.get_audio_only()
+        if not stream:
+            raise ConnectionError("No audio stream found by pytubefix.")
+        
+        stream.download(output_path=str(temp_path.parent), filename=temp_path.name)
+        print(f"pytubefix: Audio downloaded successfully to {temp_path}")
 
-    # 2. Конвертируем в мини-файл .ogg для Whisper-1
-    subprocess.run([
-        "ffmpeg",
-        "-i", str(temp_path),
-        "-ac", "1",          # моно
-        "-ar", "24000",      # частота дискретизации
-        "-c:a", "libopus",   # кодек Opus
-        "-b:a", "32k",       # битрейт
-        "-y",
-        str(audio_path)
-    ], check=True)
+    except Exception as e:
+        print(f"pytubefix failed: {e}. Falling back to yt-dlp for audio.")
+        try:
+            subprocess.run([
+                "python3", "-m", "yt_dlp",
+                "-f", "bestaudio",
+                "--user-agent", "Mozilla/5.0",
+                "-o", str(temp_path),
+                url
+            ], check=True)
+        except subprocess.CalledProcessError as e_dlp:
+            print(f"yt-dlp also failed for audio: {e_dlp}")
+            return None # Both methods failed
 
-    # 3. Удаляем временный скачанный файл
+    # 2. Convert to the required .ogg format for Whisper
+    try:
+        subprocess.run([
+            "ffmpeg",
+            "-i", str(temp_path),
+            "-ac", "1",
+            "-ar", "24000",
+            "-c:a", "libopus",
+            "-b:a", "32k",
+            "-y",
+            str(audio_path)
+        ], check=True, capture_output=True, text=True) # Capture output to hide ffmpeg noise unless error
+    except subprocess.CalledProcessError as e_ffmpeg:
+        print(f"ffmpeg conversion failed: {e_ffmpeg.stderr}")
+        return None
+
+    # 3. Clean up the temporary file
     temp_path.unlink(missing_ok=True)
 
     return audio_path

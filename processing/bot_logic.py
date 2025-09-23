@@ -312,7 +312,7 @@ def _extract_json_array(text: str) -> str:
     raise ValueError("Не удалось извлечь JSON-массив из ответа GPT.")
 
 def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, final_height):
-    if layout == 'top_bottom':
+    if layout == 'square_top_brainrot_bottom':
         video_height = int(final_height * 0.6)
         bottom_height = final_height - video_height
 
@@ -338,7 +338,38 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
         subtitle_y_pos = video_height - 60 # Сдвигаем субтитры вверх
         subtitle_width = final_width - 40
 
-    else: # main_only layout
+    elif layout == 'full_top_brainrot_bottom':
+        main_clip = main_clip_raw.resize(width=final_width)
+        video_height = main_clip.h
+        bottom_height = final_height - video_height
+
+        if bottom_video_path:
+            full_bottom_clip = VideoFileClip(str(bottom_video_path))
+            if full_bottom_clip.duration > main_clip.duration:
+                random_start = random.uniform(0, full_bottom_clip.duration - main_clip.duration)
+                bottom_clip = full_bottom_clip.subclip(random_start, random_start + main_clip.duration)
+            else:
+                bottom_clip = full_bottom_clip
+
+            # Resize to fit width and crop height to fill the bottom part
+            bottom_clip = bottom_clip.resize(width=final_width)
+            bottom_clip = bottom_clip.fx(vfx.crop, y_center=bottom_clip.h / 2, height=bottom_height)
+            bottom_clip = bottom_clip.set_duration(main_clip.duration)
+        else:
+            bottom_clip = ColorClip(size=(final_width, bottom_height), color=(0,0,0), duration=main_clip.duration)
+
+        video_canvas = clips_array([[main_clip], [bottom_clip]])
+        subtitle_y_pos = video_height - 60
+        subtitle_width = final_width - 40
+
+    elif layout == 'full_center':
+        main_clip = main_clip_raw.resize(width=final_width)
+        bg = ColorClip(size=(final_width, final_height), color=(0,0,0), duration=main_clip.duration)
+        video_canvas = CompositeVideoClip([bg, main_clip.set_position('center', 'center')])
+        subtitle_y_pos = (final_height + main_clip.h) / 2 + 20
+        subtitle_width = main_clip.w - 40
+
+    else: # square_center
         video_height = int(final_height * 0.7)
         main_clip = main_clip_raw.resize(height=video_height)
         if main_clip.w > final_width:
@@ -358,7 +389,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
 
     # --- Настройки из конфига ---
     subtitle_style = config.get('subtitle_style', 'white')
-    layout = config.get('layout', 'top_bottom')
+    layout = config.get('layout', 'square_top_brainrot_bottom')
     bottom_video_path = config.get('bottom_video_path')
     subtitles_type = config.get('subtitles_type', 'word-by-word')
 
@@ -452,7 +483,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = [{'start': '00:01:21.4', 'end': '00:01:50.6', 'hook': '«Распилили и разошлись»: почему в России нет маркетинга'}, {'start': '00:02:03.0', 'end': '00:02:27.1', 'hook': 'Маркетинг = предпринимательство: формула, которую не понимают'}, {'start': '00:02:39.2', 'end': '00:02:51.6', 'hook': 'Даже на Марсе есть вода. А у нас — маркетинг?'}, {'start': '00:02:54.0', 'end': '00:03:12.2', 'hook': 'Как дотянуться до США: что нам ещё предстоит сделать'}]
+    # shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
@@ -499,8 +531,8 @@ if __name__ == "__main__":
         # Опции: 'gta', 'minecraft' или None для черного фона
         'bottom_video': 'minecraft', 
         
-        # Опции: 'top_bottom', 'main_only'
-        'layout': 'main_only',
+        # Опции: 'square_top_brainrot_bottom', 'square_center', 'full_top_brainrot_bottom', 'full_center'
+        'layout': 'full_center',
 
         # Опции: 'word-by-word', 'phrases'
         'subtitles_type': 'word-by-word',

@@ -76,8 +76,12 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
 
     keyboard = [
         [
-            InlineKeyboardButton("1:1", callback_data='main_only'),
-            InlineKeyboardButton("1:1 + brainrot", callback_data='top_bottom'),
+            InlineKeyboardButton("1:1 (квадрат)", callback_data='square_center'),
+            InlineKeyboardButton("1:1 + brainrot", callback_data='square_top_brainrot_bottom'),
+        ],
+        [
+            InlineKeyboardButton("16:9 (по центру)", callback_data='full_center'),
+            InlineKeyboardButton("16:9 + brainrot", callback_data='full_top_brainrot_bottom'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -152,8 +156,12 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
 
         keyboard = [
             [
-                InlineKeyboardButton("1:1", callback_data='main_only'),
-                InlineKeyboardButton("1:1 + brainrot снизу", callback_data='top_bottom'),
+                InlineKeyboardButton("1:1", callback_data='square_center'),
+                InlineKeyboardButton("1:1 + brainrot", callback_data='square_top_brainrot_bottom'),
+            ],
+            [
+                InlineKeyboardButton("16:9", callback_data='full_center'),
+                InlineKeyboardButton("16:9 + brainrot", callback_data='full_top_brainrot_bottom'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -235,9 +243,9 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['config']['layout'] = layout_choice
     logger.info(f"Config for {query.from_user.id}: layout = {layout_choice}")
 
-    if layout_choice == 'main_only':
+    if layout_choice in ['square_center', 'full_center']:
         context.user_data['config']['bottom_video'] = None # Explicitly set to None
-        logger.info(f"Layout for {query.from_user.id} is main_only, skipping bottom video selection.")
+        logger.info(f"Layout for {query.from_user.id} is {layout_choice}, skipping bottom video selection.")
         
         keyboard = [
             [

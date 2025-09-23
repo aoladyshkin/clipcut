@@ -186,7 +186,7 @@ def normalize_segments(segs: List[Dict[str, float]], duration: Optional[float] =
             rs = min(rs, duration)
             re_ = min(re_, duration)
 
-        rounded.append({"start": rs, "end": min(re_, duration), "text": s["text"]})
+        rounded.append({"start": rs, "end": min(re_, int(duration) + 0.0), "text": s["text"]})
 
     return rounded
 
@@ -343,7 +343,6 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
             segments = transcribe_via_whisper(audio_path)
             
     segments = normalize_segments(segments, duration=audio_duration)
-    print(segments, audio_duration)
 
     # ЕДИНАЯ запись в TXT (нормализация внутри write_captions_file)
     write_captions_file(segments, filename=(Path(out_dir) / "captions.txt"))

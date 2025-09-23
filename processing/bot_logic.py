@@ -339,10 +339,28 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
         subtitle_width = final_width - 40
 
     elif layout == 'full_top_brainrot_bottom':
-        main_clip = main_clip_raw.resize(width=final_width)
-        video_height = main_clip.h
-        bottom_height = final_height - video_height
+        # Main clip preparation to be 16:9
+        target_width = final_width
+        target_height = int(final_width * 9 / 16)
+        target_aspect = target_width / target_height
 
+        main_clip = main_clip_raw
+        if (main_clip.w / main_clip.h) > target_aspect:
+            main_clip = main_clip.resize(height=target_height)
+            main_clip = main_clip.fx(vfx.crop, x_center=main_clip.w / 2, width=target_width)
+        else:
+            main_clip = main_clip.resize(width=target_width)
+            main_clip = main_clip.fx(vfx.crop, y_center=main_clip.h / 2, height=target_height)
+
+        # New layout heights: 50/50 split
+        video_container_height = final_height / 2
+        bottom_height = final_height / 2
+
+        # Position main_clip at the bottom of the top half
+        main_clip_y_pos = video_container_height - main_clip.h
+        main_clip = main_clip.set_position(('center', main_clip_y_pos))
+
+        # Bottom clip preparation
         if bottom_video_path:
             full_bottom_clip = VideoFileClip(str(bottom_video_path))
             if full_bottom_clip.duration > main_clip.duration:
@@ -351,15 +369,21 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
             else:
                 bottom_clip = full_bottom_clip
 
-            # Resize to fit width and crop height to fill the bottom part
-            bottom_clip = bottom_clip.resize(width=final_width)
-            bottom_clip = bottom_clip.fx(vfx.crop, y_center=bottom_clip.h / 2, height=bottom_height)
+            bottom_clip = bottom_clip.resize(height=bottom_height)
+            if bottom_clip.w > final_width:
+                bottom_clip = bottom_clip.fx(vfx.crop, x_center=bottom_clip.w / 2, width=final_width)
             bottom_clip = bottom_clip.set_duration(main_clip.duration)
         else:
             bottom_clip = ColorClip(size=(final_width, bottom_height), color=(0,0,0), duration=main_clip.duration)
 
-        video_canvas = clips_array([[main_clip], [bottom_clip]])
-        subtitle_y_pos = video_height - 60
+        bottom_clip = bottom_clip.set_position(('center', 'bottom'))
+
+        # Create final canvas
+        bg = ColorClip(size=(final_width, final_height), color=(0,0,0), duration=main_clip.duration)
+        video_canvas = CompositeVideoClip([bg, main_clip, bottom_clip])
+
+        # Subtitles position
+        subtitle_y_pos = video_container_height - 60
         subtitle_width = final_width - 40
 
     elif layout == 'full_center':

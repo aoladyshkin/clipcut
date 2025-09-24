@@ -408,8 +408,6 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
     subtitles_type = config.get('subtitles_type', 'word-by-word')
 
     faster_whisper_model = None
-    
-    print(subtitle_style)
 
     # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':

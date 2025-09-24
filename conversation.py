@@ -63,7 +63,7 @@ def get_conv_handler():
                 CallbackQueryHandler(get_subtitles_type, pattern='^(word-by-word|phrases|no_subtitles)'),
             ],
             GET_SUBTITLE_STYLE: [
-                CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow)'),
+                CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow|purple|green)'),
             ],
             CONFIRM_CONFIG: [
                 CallbackQueryHandler(confirm_config, pattern='^confirm'),

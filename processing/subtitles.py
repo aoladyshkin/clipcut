@@ -188,6 +188,14 @@ def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, text_color):
     """
     Превращаем items в набор TextClip (тень + текст).
     """
+    COLOR_MAP = {
+        'white': 'white',
+        'yellow': 'yellow',
+        'purple': '#E700FF',
+        'green': '#00FF00'
+    }
+    resolved_color = COLOR_MAP.get(text_color, 'white')
+
     subtitle_clips = []
     shadow_offset = 4
     text_params = {
@@ -207,7 +215,7 @@ def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, text_color):
         shadow = (TextClip(txt, color="black", **text_params)
                   .set_position(("center", y_pos + shadow_offset))
                   .set_start(start_rel).set_end(end_rel))
-        text = (TextClip(txt, color=text_color, **text_params)
+        text = (TextClip(txt, color=resolved_color, **text_params)
                 .set_position(("center", y_pos))
                 .set_start(start_rel).set_end(end_rel))
 

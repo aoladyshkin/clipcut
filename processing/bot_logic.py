@@ -411,6 +411,10 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
 
     if subtitle_style == 'yellow':
         text_color = '#EDFF03'
+    elif subtitle_style == 'purple':
+        text_color = '#E700FF'
+    elif subtitle_style == 'green':
+        text_color = '#00FF00'
     else:
         text_color = 'white'
 
@@ -497,6 +501,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
+    # shorts_timecodes = [{'start': '00:00:22.0', 'end': '00:00:37.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
     shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:

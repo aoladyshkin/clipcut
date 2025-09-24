@@ -343,7 +343,8 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return CONFIRM_CONFIG
     else:
         keyboard = [
-            [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
+            [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
+            [InlineKeyboardButton("Фиолетовый", callback_data='purple'), InlineKeyboardButton("Зелёный", callback_data='green')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.delete()

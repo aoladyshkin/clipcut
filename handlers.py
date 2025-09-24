@@ -677,7 +677,8 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     rating = query.data.split('_')[1]
     
     rating_id = str(uuid.uuid4())
-    log_event(query.from_user.id, 'rating', {'rating_id': rating_id, 'rating': rating})
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'rating', {'rating_id': rating_id, 'rating': rating, 'generation_id': generation_id})
     
     context.user_data['rating_id'] = rating_id
     context.user_data['rating'] = rating

@@ -674,8 +674,11 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     query = update.callback_query
     await query.answer()
     rating = query.data.split('_')[1]
-    log_event(query.from_user.id, 'rating', {'rating': rating})
     
+    rating_id = str(uuid.uuid4())
+    log_event(query.from_user.id, 'rating', {'rating_id': rating_id, 'rating': rating})
+    
+    context.user_data['rating_id'] = rating_id
     context.user_data['rating'] = rating
 
     keyboard = [[InlineKeyboardButton("Пропустить", callback_data='skip_feedback')]]
@@ -689,11 +692,11 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the user's text feedback and forwards it."""
-    feedback_text = update.message.text
     user_id = update.message.from_user.id
+    rating_id = context.user_data.get('rating_id')
     rating = context.user_data.get('rating')
 
-    log_event(user_id, 'feedback', {'rating': rating, 'feedback': feedback_text})
+    log_event(user_id, 'feedback', {'rating_id': rating_id})
 
     if FEEDBACK_GROUP_ID:
         try:

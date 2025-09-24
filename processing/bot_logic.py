@@ -408,15 +408,8 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
     subtitles_type = config.get('subtitles_type', 'word-by-word')
 
     faster_whisper_model = None
-
-    if subtitle_style == 'yellow':
-        text_color = '#EDFF03'
-    elif subtitle_style == 'purple':
-        text_color = '#E700FF'
-    elif subtitle_style == 'green':
-        text_color = '#00FF00'
-    else:
-        text_color = 'white'
+    
+    print(subtitle_style)
 
     # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':
@@ -452,7 +445,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             subtitle_items = get_subtitle_items(
                 subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
                 faster_whisper_model)
-            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
+            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, subtitle_style)
             final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
         else:
             final_clip = video_canvas

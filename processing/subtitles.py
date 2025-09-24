@@ -184,7 +184,7 @@ def _segments_to_word_items(segments,
 # PUBLIC: MOVIEPY РЕНДЕР
 # ============================
 
-def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, text_color):
+def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, subtitle_style):
     """
     Превращаем items в набор TextClip (тень + текст).
     """
@@ -194,7 +194,7 @@ def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, text_color):
         'purple': '#E700FF',
         'green': '#00FF00'
     }
-    resolved_color = COLOR_MAP.get(text_color, 'white')
+    resolved_color = COLOR_MAP.get(subtitle_style, 'white')
 
     subtitle_clips = []
     shadow_offset = 4

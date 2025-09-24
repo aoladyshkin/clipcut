@@ -222,8 +222,8 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     keyboard = [
         [
-            InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
-            InlineKeyboardButton("По фразе", callback_data='phrases'),
+            InlineKeyboardButton("Одно слово", callback_data='word-by-word'),
+            InlineKeyboardButton("Фраза", callback_data='phrases'),
         ],
         [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
     ]
@@ -253,8 +253,8 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         
         keyboard = [
             [
-                InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
-                InlineKeyboardButton("По фразе", callback_data='phrases'),
+                InlineKeyboardButton("Одно слово", callback_data='word-by-word'),
+                InlineKeyboardButton("Фраза", callback_data='phrases'),
             ],
             [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
         ]

@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, P
 import asyncio
 
 from conversation import get_conv_handler
-from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, referral_command, export_users_command
+from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, export_users_command
 from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
 from states import RATING

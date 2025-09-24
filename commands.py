@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user
 from analytics import log_event
-from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT
 from config import TUTORIAL_LINK
 from datetime import datetime, timezone
 
@@ -64,6 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         BotCommand(command="balance", description="Показать баланс"),
         BotCommand(command="topup", description="Пополнить баланс"),
         BotCommand(command="referral", description="Пригласить друга"),
+        BotCommand(command="feedback", description="Оставить отзыв"),
     ]
     if str(user_id) in admin_ids:
         logger.info("User is an admin, adding admin commands.")
@@ -111,7 +112,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/help - Показать это сообщение\n"
         "/balance - Показать текущий баланс\n"
         "/topup - Пополнить баланс\n"
-        "/referral - Пригласить друга\n\n"
+        "/referral - Пригласить друга\n"
+        "/feedback - Оставить отзыв\n\n"
         "@sf_tsupport_bot - по любым вопросам\n\n"
         f"👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>"
     )
@@ -243,7 +245,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     context.user_data['config'] = {}
     await update.message.reply_text(
-        "Действие отменено. Пришлите мне ссылку на YouTube видео, чтобы начать заново."
+        "Действие отменено. Все команды – /help"
     )
     return ConversationHandler.END
 
@@ -338,3 +340,8 @@ async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except Exception as e:
         await update.message.reply_text(f"Произошла ошибка при выгрузке данных: {e}")
+
+async def start_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the feedback conversation."""
+    await update.message.reply_text("Отправьте текст вашего отзыва. Для отмены - /cancel")
+    return GET_FEEDBACK_TEXT

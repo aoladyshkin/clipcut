@@ -708,15 +708,37 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 message_id=update.message.message_id
             )
             # Optionally, send the rating as well
-            await context.bot.send_message(
-                chat_id=FEEDBACK_GROUP_ID,
-                text=f"Пользователь {user_id} поставил оценку: {rating}"
-            )
+            if rating:
+                await context.bot.send_message(
+                    chat_id=FEEDBACK_GROUP_ID,
+                    text=f"Пользователь {user_id} поставил оценку: {rating}"
+                )
         except Exception as e:
             logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
 
     await update.message.reply_text("Спасибо за ваш отзыв!")
     context.user_data.clear()
+    return ConversationHandler.END
+
+async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the user's text feedback and forwards it."""
+    user_id = update.message.from_user.id
+
+    if FEEDBACK_GROUP_ID:
+        try:
+            await context.bot.forward_message(
+                chat_id=FEEDBACK_GROUP_ID,
+                from_chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+            await context.bot.send_message(
+                chat_id=FEEDBACK_GROUP_ID,
+                text=f"Отзыв от пользователя {user_id}."
+            )
+        except Exception as e:
+            logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
+
+    await update.message.reply_text("Спасибо за ваш отзыв!")
     return ConversationHandler.END
 
 async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

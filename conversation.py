@@ -1,5 +1,5 @@
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from commands import start, topup_start, broadcast_start, broadcast_message, cancel
+from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback
 from handlers import (
     get_url,
     get_shorts_number_auto,
@@ -19,7 +19,8 @@ from handlers import (
     check_crypto_payment,
     handle_rating,
     handle_feedback,
-    skip_feedback
+    skip_feedback,
+    handle_user_feedback
 ) 
 from states import (
     GET_URL,
@@ -36,7 +37,8 @@ from states import (
     CRYPTO_PAYMENT,
     RATING,
     FEEDBACK,
-    PROCESSING
+    PROCESSING,
+    GET_FEEDBACK_TEXT
 )
 
 def get_conv_handler():
@@ -45,7 +47,8 @@ def get_conv_handler():
             CommandHandler("start", start),
             CommandHandler("topup", topup_start),
             CallbackQueryHandler(topup_start, pattern='^topup_start'),
-            CommandHandler("broadcast", broadcast_start)
+            CommandHandler("broadcast", broadcast_start),
+            CommandHandler("feedback", start_feedback)
         ],
         states={
             GET_URL: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_url)],
@@ -97,6 +100,7 @@ def get_conv_handler():
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ],
             GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
+            GET_FEEDBACK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_feedback)],
         },
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start)],
         allow_reentry=True

@@ -409,11 +409,6 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
 
     faster_whisper_model = None
 
-    if subtitle_style == 'yellow':
-        text_color = '#EDFF03'
-    else:
-        text_color = 'white'
-
     # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':
         faster_whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
@@ -448,7 +443,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             subtitle_items = get_subtitle_items(
                 subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
                 faster_whisper_model)
-            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, text_color)
+            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, subtitle_style)
             final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
         else:
             final_clip = video_canvas
@@ -497,6 +492,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
+    # shorts_timecodes = [{'start': '00:00:22.0', 'end': '00:00:37.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
     shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:

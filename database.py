@@ -99,5 +99,18 @@ def get_all_users_data():
         cursor.execute("SELECT user_id, balance, generated_shorts_count, referred_by FROM users")
         return cursor.fetchall()
 
+def clear_database():
+    """
+    Удаляет все записи из таблицы users.
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM users")
+        conn.commit()
+
 # Убедимся, что база данных инициализируется при запуске
 initialize_database()
+
+if __name__ == "__main__":
+    clear_database()
+    # Пример использования функций

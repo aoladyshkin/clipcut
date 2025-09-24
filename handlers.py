@@ -222,8 +222,8 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     keyboard = [
         [
-            InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
-            InlineKeyboardButton("По фразе", callback_data='phrases'),
+            InlineKeyboardButton("Одно слово", callback_data='word-by-word'),
+            InlineKeyboardButton("Фраза", callback_data='phrases'),
         ],
         [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
     ]
@@ -253,8 +253,8 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         
         keyboard = [
             [
-                InlineKeyboardButton("По одному слову", callback_data='word-by-word'),
-                InlineKeyboardButton("По фразе", callback_data='phrases'),
+                InlineKeyboardButton("Одно слово", callback_data='word-by-word'),
+                InlineKeyboardButton("Фраза", callback_data='phrases'),
             ],
             [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
         ]
@@ -343,7 +343,8 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return CONFIRM_CONFIG
     else:
         keyboard = [
-            [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')]
+            [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
+            [InlineKeyboardButton("Фиолетовый", callback_data='purple'), InlineKeyboardButton("Зелёный", callback_data='green')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.delete()
@@ -531,7 +532,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
 
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"✅ Оплата прошла успешно! Ваш баланс <b> пополнен на {shorts_amount} шортс.</b> \n\n Новый баланс: <b>{new_balance} шортс.</b>",
+        text=f"💸 Оплата прошла успешно!\nВаш баланс пополнен на {shorts_amount} шортс.\n\nНовый баланс: <b>{new_balance} шортс.</b>",
         parse_mode="HTML"
     )
 
@@ -641,7 +642,8 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
                 log_event(user_id, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 
                 await query.edit_message_text(
-                    f"Оплата прошла успешно! Ваш баланс пополнен на {amount} шортсов. \nНовый баланс: {new_balance} шортсов."
+                    f"💸 Оплата прошла успешно!\nВаш баланс пополнен на {amount} шортсов.\n\nНовый баланс: <b>{new_balance} шортсов.</b>",
+                    parse_mode="HTML"
                 )
                 return ConversationHandler.END
             else:
@@ -673,8 +675,11 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     query = update.callback_query
     await query.answer()
     rating = query.data.split('_')[1]
-    log_event(query.from_user.id, 'rating', {'rating': rating})
     
+    rating_id = str(uuid.uuid4())
+    log_event(query.from_user.id, 'rating', {'rating_id': rating_id, 'rating': rating})
+    
+    context.user_data['rating_id'] = rating_id
     context.user_data['rating'] = rating
 
     keyboard = [[InlineKeyboardButton("Пропустить", callback_data='skip_feedback')]]
@@ -688,11 +693,11 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the user's text feedback and forwards it."""
-    feedback_text = update.message.text
     user_id = update.message.from_user.id
+    rating_id = context.user_data.get('rating_id')
     rating = context.user_data.get('rating')
 
-    log_event(user_id, 'feedback', {'rating': rating, 'feedback': feedback_text})
+    log_event(user_id, 'feedback', {'rating_id': rating_id})
 
     if FEEDBACK_GROUP_ID:
         try:

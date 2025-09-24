@@ -84,7 +84,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['balance'] = balance
     
     await update.message.reply_text(
-        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok.\nВаш баланс: {balance} шортсов.\n\n👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>",
+        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok ⚡️\n\nВаш баланс: {balance} шортсов.\n\n👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>",
         parse_mode="HTML"
     )
     return GET_URL

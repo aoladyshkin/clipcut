@@ -532,7 +532,7 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
 
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"✅ Оплата прошла успешно! Ваш баланс <b> пополнен на {shorts_amount} шортс.</b> \n\n Новый баланс: <b>{new_balance} шортс.</b>",
+        text=f"💸 Оплата прошла успешно!\nВаш баланс пополнен на {shorts_amount} шортс.\n\nНовый баланс: <b>{new_balance} шортс.</b>",
         parse_mode="HTML"
     )
 
@@ -642,7 +642,8 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
                 log_event(user_id, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 
                 await query.edit_message_text(
-                    f"Оплата прошла успешно! Ваш баланс пополнен на {amount} шортсов. \nНовый баланс: {new_balance} шортсов."
+                    f"💸 Оплата прошла успешно!\nВаш баланс пополнен на {amount} шортсов.\n\nНовый баланс: <b>{new_balance} шортсов.</b>",
+                    parse_mode="HTML"
                 )
                 return ConversationHandler.END
             else:

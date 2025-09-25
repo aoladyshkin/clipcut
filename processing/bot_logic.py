@@ -607,18 +607,18 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         status_callback("🔍 Анализируем видео...")
     print("Транскрибируем видео...")
     force_ai_transcription = config.get('force_ai_transcription', False)
-    transcript_segments = []
-    # transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
+    # transcript_segments = []
+    transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
 
-    # if not transcript_segments:
-    #     print("Не удалось получить транскрипцию.")
-    #     return 0, 0
+    if not transcript_segments:
+        print("Не удалось получить транскрипцию.")
+        return 0, 0
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = [{'start': '00:01:40.0', 'end': '00:02:10.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
-    # shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    # shorts_timecodes = [{'start': '00:01:40.0', 'end': '00:02:10.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")

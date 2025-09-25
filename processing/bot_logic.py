@@ -338,6 +338,13 @@ def _extract_json_array(text: str) -> str:
                     return text[start:i+1]
     raise ValueError("Не удалось извлечь JSON-массив из ответа GPT.")
 
+def get_box_center(box):
+    x, y, w, h = box
+    return (x + w/2, y + h/2)
+
+def distance(p1, p2):
+    return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
+
 def create_face_tracked_clip(main_clip_raw, target_height, target_width):
     """
     Creates a clip with face tracking. The frame only moves if the speaker's face
@@ -358,6 +365,7 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
     
     crop_x_center = main_clip_resized.w / 2
     crop_half_width = target_width / 2
+    tracked_face_box = None
 
     step = 0.25
     for t in np.arange(0, main_clip_resized.duration, step):
@@ -367,28 +375,48 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
         
         if len(faces) > 0:
-            faces = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)
-            x, y, w, h = faces[0]
-            face_center_x = x + w / 2
+            if tracked_face_box is None:
+                # No face is being tracked, pick a new one (largest).
+                tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+            else:
+                # A face is being tracked. Find the closest face in the new frame.
+                previous_center = get_box_center(tracked_face_box)
+                
+                closest_face = None
+                min_dist = float('inf')
+                for face in faces:
+                    d = distance(get_box_center(face), previous_center)
+                    if d < min_dist:
+                        min_dist = d
+                        closest_face = face
+                
+                # If the closest face is close enough, update the tracked face
+                max_allowed_distance = tracked_face_box[2] * 1.5 
+                if min_dist < max_allowed_distance:
+                    tracked_face_box = closest_face
+                else:
+                    # We lost the track. Reset and pick the largest face again.
+                    tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
 
-            # Check if face is outside the current crop's visible area
+            # Determine crop based on the tracked face
+            face_center_x = get_box_center(tracked_face_box)[0]
+            w = tracked_face_box[2]
+            
             visible_left = crop_x_center - crop_half_width
             visible_right = crop_x_center + crop_half_width
-            
-            # Add a small buffer to prevent moving for tiny adjustments
-            buffer = w * 0.2 
+            buffer = w * 0.2
 
             if not (visible_left + buffer < face_center_x < visible_right - buffer):
-                # Face is outside the visible area (plus buffer), so we re-center the crop on the face
                 crop_x_center = face_center_x
+        else:
+            # No faces detected, lose track
+            tracked_face_box = None
 
-    
         # Clamp the crop_x_center to avoid black bars
         min_x = crop_half_width
         max_x = main_clip_resized.w - crop_half_width
         clamped_crop_x_center = max(min_x, min(crop_x_center, max_x))
         
-        # Update crop_x_center with the clamped value for the next iteration's check
         crop_x_center = clamped_crop_x_center
 
         subclip_end = min(t + step, main_clip_resized.duration)
@@ -579,18 +607,18 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         status_callback("🔍 Анализируем видео...")
     print("Транскрибируем видео...")
     force_ai_transcription = config.get('force_ai_transcription', False)
-    # transcript_segments = []
-    transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
+    transcript_segments = []
+    # transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
 
-    if not transcript_segments:
-        print("Не удалось получить транскрипцию.")
-        return 0, 0
+    # if not transcript_segments:
+    #     print("Не удалось получить транскрипцию.")
+    #     return 0, 0
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    # shorts_timecodes = [{'start': '00:01:40.0', 'end': '00:02:10.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
-    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    shorts_timecodes = [{'start': '00:01:40.0', 'end': '00:02:10.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
+    # shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")

@@ -23,16 +23,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     log_event(user_id, 'start_command', {'username': update.effective_user.username})
     
     referrer_id = None
-    if context.args and context.args[0].startswith('ref_'):
-        try:
-            referrer_id = int(context.args[0].split('_')[1])
-        except (IndexError, ValueError):
-            referrer_id = None
+    source = None
+    if context.args:
+        payload = context.args[0]
+        if payload.startswith('ref_'):
+            try:
+                referrer_id = int(payload.split('_')[1])
+                source = 'referral'
+            except (IndexError, ValueError):
+                referrer_id = None
+        elif payload.startswith('source_'):
+            try:
+                source = payload.split('_')[1]
+            except IndexError:
+                source = None
 
-    _, balance, _, is_new = get_user(user_id, referrer_id=referrer_id)
+    _, balance, _, is_new = get_user(user_id, referrer_id=referrer_id, source=source)
 
     if is_new:
-        log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id})
+        log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id, 'source': source})
         if referrer_id and referrer_id != user_id:
             # Award bonuses
             add_to_user_balance(user_id, 10)
@@ -384,7 +393,7 @@ async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYP
         writer = csv.writer(output)
         
         # Write header
-        writer.writerow(['user_id', 'balance', 'generated_shorts_count', 'referred_by'])
+        writer.writerow(['user_id', 'balance', 'generated_shorts_count', 'referred_by', 'source'])
         
         # Write data
         writer.writerows(users_data)

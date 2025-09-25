@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user
 from analytics import log_event
-from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE
 from config import TUTORIAL_LINK
 from datetime import datetime, timezone
 
@@ -71,6 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
         base_commands.append(BotCommand(command="setbalance", description="Установить баланс пользователю"))
         base_commands.append(BotCommand(command="broadcast", description="Сделать рассылку"))
+        base_commands.append(BotCommand(command="broadcast_to", description="Сделать рассылку определенным юзерам"))
         base_commands.append(BotCommand(command="start_discount", description="Начать скидку"))
         base_commands.append(BotCommand(command="end_discount", description="Завершить скидку"))
         base_commands.append(BotCommand(command="rm_user", description="Удалить пользователя"))
@@ -97,8 +98,8 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     
     await update.message.reply_text(
-        "Пригласите друга и получите по 10 шортсов каждый!\n\n"
-        "Отправьте эту ссылку другу:\n"
+        "Пригласите друга и получите по 10 шортсов каждый!\n\n" 
+        "Отправьте эту ссылку другу:\n" 
         f"`{referral_link}`",
         parse_mode="Markdown"
     )
@@ -106,7 +107,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет сообщение с помощью и списком команд."""
     help_text = (
-        "Этот бот создает короткие вирусные видео из YouTube роликов.\n\n"
+        "Этот бот создает короткие вирусные видео из YouTube роликов.\n\n" 
         "Доступные команды:\n"
         "/start - Сгенерировать шортс\n"
         "/help - Показать это сообщение\n"
@@ -217,6 +218,64 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     animation = update.message.animation.file_id if update.message.animation else None
 
     user_ids = get_all_user_ids()
+    sent_count = 0
+    failed_count = 0
+
+    await update.message.reply_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
+
+    for user_id in user_ids:
+        try:
+            if photo:
+                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=caption, caption_entities=caption_entities)
+            elif animation:
+                await context.bot.send_animation(chat_id=user_id, animation=animation, caption=caption, caption_entities=caption_entities)
+            elif text:
+                await context.bot.send_message(chat_id=user_id, text=text, entities=entities)
+            sent_count += 1
+        except TelegramError as e:
+            logger.error(f"Failed to send message to {user_id}: {e}")
+            failed_count += 1
+        
+        await asyncio.sleep(0.04) # ~25 messages per second
+
+    await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+    return ConversationHandler.END
+
+async def broadcast_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the targeted broadcast conversation."""
+    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
+    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
+    if str(update.effective_user.id) not in admin_ids:
+        return ConversationHandler.END
+
+    if not context.args:
+        await update.message.reply_text("Пожалуйста, укажите ID пользователей через запятую. Например: /broadcast_to 123,456,789")
+        return ConversationHandler.END
+
+    try:
+        user_ids_str = " ".join(context.args)
+        user_ids = [int(uid.strip()) for uid in user_ids_str.split(',')]
+        context.user_data['broadcast_to_ids'] = user_ids
+        await update.message.reply_text(f"Готовлю рассылку для {len(user_ids)} пользователей. Отправьте пост, который нужно разослать. Для отмены - /cancel.")
+        return GET_TARGETED_BROADCAST_MESSAGE
+    except (ValueError, IndexError):
+        await update.message.reply_text("Неверный формат ID. Пожалуйста, укажите ID пользователей через запятую. Например: /broadcast_to 123,456,789")
+        return ConversationHandler.END
+
+async def broadcast_to_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Sends a broadcast message to a specific list of users."""
+    text = update.message.text
+    entities = update.message.entities
+    caption = update.message.caption
+    caption_entities = update.message.caption_entities
+    photo = update.message.photo[-1].file_id if update.message.photo else None
+    animation = update.message.animation.file_id if update.message.animation else None
+
+    user_ids = context.user_data.get('broadcast_to_ids', [])
+    if not user_ids:
+        await update.message.reply_text("Не найдены ID пользователей для рассылки.")
+        return ConversationHandler.END
+
     sent_count = 0
     failed_count = 0
 

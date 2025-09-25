@@ -54,6 +54,11 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     is_available, message = check_video_availability(url)
     if not is_available:
         await update.message.reply_text(message)
+        log_event(
+            update.effective_user.id,
+            'video_availability_error',
+            {'url': url, 'error': message}
+        )
         return GET_URL
 
     context.user_data['url'] = url

@@ -10,6 +10,10 @@ from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBAC
 from config import TUTORIAL_LINK
 from datetime import datetime, timezone
 
+import csv
+import io
+from database import get_all_users_data
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -84,6 +88,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         base_commands.append(BotCommand(command="start_discount", description="Начать скидку"))
         base_commands.append(BotCommand(command="end_discount", description="Завершить скидку"))
         base_commands.append(BotCommand(command="rm_user", description="Удалить пользователя"))
+        base_commands.append(BotCommand(command="export_users", description="Выгрузить пользователей"))
     
     await context.bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
@@ -370,11 +375,6 @@ async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     except (ValueError, IndexError):
         await update.message.reply_text("Неверный формат команды. Используйте: /rm_user <user_id>")
-
-# Added for user export command
-import csv
-import io
-from database import get_all_users_data
 
 async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Exports all users to a CSV file (admin only)."""

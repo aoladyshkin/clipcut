@@ -10,3 +10,4 @@ pytubefix
 aiocryptopay
 python-telegram-bot[job-queue]
 clickhouse-driver
+opencv-python-headless

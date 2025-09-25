@@ -471,6 +471,12 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
         subtitle_y_pos = (final_height + main_clip.h) / 2 + 20
         subtitle_width = main_clip.w - 40
 
+    elif layout == 'face_track_9_16':
+        main_clip = create_face_tracked_clip(main_clip_raw, final_height, final_width)
+        video_canvas = main_clip
+        subtitle_y_pos = final_height * 0.75
+        subtitle_width = final_width - 40
+
     else: # square_center
         video_height = int(final_height * 0.7)
         

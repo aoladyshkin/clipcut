@@ -6,7 +6,7 @@ from telegram.error import TimedOut
 from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
-from processing.bot_logic import main as process_video
+from processing.bot_logic import main as process_video, check_video_availability
 from utils import format_config
 from analytics import log_event
 from states import (
@@ -48,6 +48,17 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     url = update.message.text
     if "youtube.com/" not in url and "youtu.be/" not in url:
         await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на YouTube видео.")
+        return GET_URL
+
+    # Проверяем доступность видео
+    is_available, message = check_video_availability(url)
+    if not is_available:
+        await update.message.reply_text(message)
+        log_event(
+            update.effective_user.id,
+            'video_availability_error',
+            {'url': url, 'error': message}
+        )
         return GET_URL
 
     context.user_data['url'] = url

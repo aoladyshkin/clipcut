@@ -88,6 +88,30 @@ def gpt_gpt_prompt(shorts_number):
     return prompt
 
 # --- YouTube загрузка ---
+def check_video_availability(url: str) -> (bool, str):
+    """
+    Checks if a YouTube video is available without downloading it.
+    Returns a tuple (is_available, message).
+    """
+    try:
+        yt = YouTube(url)
+        # Accessing the title is a lightweight way to check for availability
+        _ = yt.title
+        # Check if there are any streams available
+        if not yt.streams:
+            return False, "Видео недоступно, так как для него не найдено ни одного потока для скачивания."
+        return True, "Видео доступно."
+    except Exception as e:
+        error_message = f"Произошла непредвиденная ошибка при проверке видео: {e}"
+        print(error_message)
+        if "age restricted" in str(e).lower():
+            return False, "⚠️ Обработка не удалась – YouTube пометил этот ролик как 18+, и доступ к исходнику ограничён.\n\nВыбери другой ролик без ограничений — и мы всё сделаем ✨"
+        if "private" in str(e).lower():
+            return False, "Это видео приватное и не может быть скачано."
+        if "unavailable" in str(e).lower():
+            return False, "⚠️ К сожалению, мы не смогли обработать это видео – владелец ролика ограничил его показ по странам и наш сервер не имеет к нему доступа.\nПопробуйте загрузить другое видео — всё должно сработать корректно ✅\n\nСпасибо, что используете Shorts Factory 🙌"
+        return False, f"Видео недоступно. Пожалуйста, проверьте ссылку или попробуйте другое видео."
+
 def download_video_only(url, video_path):
     """Downloads the best available video up to 720p using pytubefix."""
     try:
@@ -477,7 +501,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
 
     if not video_only or not audio_only:
-        raise Exception("⚠️ К сожалению, мы не смогли обработать это видео.\nПричина: у владельца ролика стоят ограничения по странам, и наш сервер не имеет к нему доступа.\nПопробуй загрузить другое видео — всё должно сработать корректно ✅\n\nСпасибо, что используешь Shorts Factory 🙌")
+        raise Exception("Произошла ошибка при скачивании видео – мы уже о ней знаем и совсем скоро всё починим!")
 
     # Объединяем видео и аудио
     video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")

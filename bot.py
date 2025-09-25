@@ -34,7 +34,11 @@ async def processing_worker(queue: asyncio.Queue, application: Application):
         except Exception as e:
             logger.error(f"Ошибка в воркере для чата {chat_id}: {e}", exc_info=True)
             try:
-                await application.bot.send_message(chat_id, f"Произошла критическая ошибка во время обработки вашего видео: {e}")
+                await application.bot.send_message(
+                    chat_id,
+                    f"Произошла ошибка во время обработки вашего видео:\n\n> {e}",
+                    parse_mode="HTML"
+                )
             except Exception as send_e:
                 logger.error(f"Не удалось отправить сообщение об ошибке в чат {chat_id}: {send_e}")
         finally:

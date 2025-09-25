@@ -1,5 +1,5 @@
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback
+from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback, broadcast_to_start, broadcast_to_message
 from handlers import (
     get_url,
     get_shorts_number_auto,
@@ -38,7 +38,8 @@ from states import (
     RATING,
     FEEDBACK,
     PROCESSING,
-    GET_FEEDBACK_TEXT
+    GET_FEEDBACK_TEXT,
+    GET_TARGETED_BROADCAST_MESSAGE
 )
 
 def get_conv_handler():
@@ -48,6 +49,7 @@ def get_conv_handler():
             CommandHandler("topup", topup_start),
             CallbackQueryHandler(topup_start, pattern='^topup_start'),
             CommandHandler("broadcast", broadcast_start),
+            CommandHandler("broadcast_to", broadcast_to_start),
             CommandHandler("feedback", start_feedback)
         ],
         states={
@@ -100,6 +102,7 @@ def get_conv_handler():
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup')
             ],
             GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
+            GET_TARGETED_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_to_message)],
             GET_FEEDBACK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_feedback)],
         },
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start)],

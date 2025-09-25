@@ -476,6 +476,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # скачиваем аудио
     audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
 
+    if not video_only or not audio_only:
+        raise Exception("Не удалось загрузить видео или аудио - оно недоступно для нашего сервера ;(")
+
     # Объединяем видео и аудио
     video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
 

@@ -359,7 +359,7 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
     crop_x_center = main_clip_resized.w / 2
     crop_half_width = target_width / 2
 
-    step = 0.5
+    step = 0.25
     for t in np.arange(0, main_clip_resized.duration, step):
         frame = main_clip_resized.get_frame(t)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)

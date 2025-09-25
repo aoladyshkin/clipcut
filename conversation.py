@@ -59,7 +59,7 @@ def get_conv_handler():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual),
             ],
             GET_LAYOUT: [
-                CallbackQueryHandler(get_layout, pattern='^(square_center|square_top_brainrot_bottom|full_center|full_top_brainrot_bottom)'),
+                CallbackQueryHandler(get_layout, pattern='^(square_center|square_top_brainrot_bottom|full_center|full_top_brainrot_bottom|face_track_9_16)'),
             ],
             GET_BOTTOM_VIDEO: [
                 CallbackQueryHandler(get_bottom_video, pattern='^(gta|minecraft|none)'),

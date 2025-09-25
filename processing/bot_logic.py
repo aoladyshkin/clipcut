@@ -15,12 +15,15 @@ from moviepy.editor import (
     ColorClip,
     clips_array,
     vfx,
+    concatenate_videoclips,
 )
 import json
 from openai import OpenAI
 import time
 import tempfile
 import re
+import cv2
+import numpy as np
 from faster_whisper import WhisperModel
 from processing.transcription import get_transcript_segments_and_file, get_audio_duration
 from processing.subtitles import create_subtitle_clips, get_subtitle_items
@@ -335,14 +338,103 @@ def _extract_json_array(text: str) -> str:
                     return text[start:i+1]
     raise ValueError("Не удалось извлечь JSON-массив из ответа GPT.")
 
+def get_box_center(box):
+    x, y, w, h = box
+    return (x + w/2, y + h/2)
+
+def distance(p1, p2):
+    return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
+
+def create_face_tracked_clip(main_clip_raw, target_height, target_width):
+    """
+    Creates a clip with face tracking. The frame only moves if the speaker's face
+    is about to leave the visible cropped area.
+    """
+    main_clip_resized = main_clip_raw.resize(height=target_height)
+    
+    if main_clip_resized.w <= target_width:
+        return main_clip_resized
+
+    try:
+        face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+    except Exception as e:
+        print(f"Could not load face cascade model: {e}. Falling back to center crop.")
+        return main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=target_width)
+
+    subclips = []
+    
+    crop_x_center = main_clip_resized.w / 2
+    crop_half_width = target_width / 2
+    tracked_face_box = None
+
+    step = 0.25
+    for t in np.arange(0, main_clip_resized.duration, step):
+        frame = main_clip_resized.get_frame(t)
+        gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+        
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
+        
+        if len(faces) > 0:
+            if tracked_face_box is None:
+                # No face is being tracked, pick a new one (largest).
+                tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+            else:
+                # A face is being tracked. Find the closest face in the new frame.
+                previous_center = get_box_center(tracked_face_box)
+                
+                closest_face = None
+                min_dist = float('inf')
+                for face in faces:
+                    d = distance(get_box_center(face), previous_center)
+                    if d < min_dist:
+                        min_dist = d
+                        closest_face = face
+                
+                # If the closest face is close enough, update the tracked face
+                max_allowed_distance = tracked_face_box[2] * 1.5 
+                if min_dist < max_allowed_distance:
+                    tracked_face_box = closest_face
+                else:
+                    # We lost the track. Reset and pick the largest face again.
+                    tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+
+            # Determine crop based on the tracked face
+            face_center_x = get_box_center(tracked_face_box)[0]
+            w = tracked_face_box[2]
+            
+            visible_left = crop_x_center - crop_half_width
+            visible_right = crop_x_center + crop_half_width
+            buffer = w * 0.2
+
+            if not (visible_left + buffer < face_center_x < visible_right - buffer):
+                crop_x_center = face_center_x
+        else:
+            # No faces detected, lose track
+            tracked_face_box = None
+
+        # Clamp the crop_x_center to avoid black bars
+        min_x = crop_half_width
+        max_x = main_clip_resized.w - crop_half_width
+        clamped_crop_x_center = max(min_x, min(crop_x_center, max_x))
+        
+        crop_x_center = clamped_crop_x_center
+
+        subclip_end = min(t + step, main_clip_resized.duration)
+        subclip = main_clip_resized.subclip(t, subclip_end)
+        cropped_subclip = subclip.fx(vfx.crop, x_center=clamped_crop_x_center, width=target_width)
+        subclips.append(cropped_subclip)
+
+    if not subclips:
+        return main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=target_width)
+
+    return concatenate_videoclips(subclips)
+
 def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, final_height):
     if layout == 'square_top_brainrot_bottom':
         video_height = int(final_height * 0.6)
         bottom_height = final_height - video_height
 
-        main_clip = main_clip_raw.resize(height=video_height)
-        if main_clip.w > final_width:
-            main_clip = main_clip.fx(vfx.crop, x_center=main_clip.w / 2, width=final_width)
+        main_clip = create_face_tracked_clip(main_clip_raw, video_height, final_width)
 
         if bottom_video_path:
             full_bottom_clip = VideoFileClip(str(bottom_video_path))
@@ -407,11 +499,16 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
         subtitle_y_pos = (final_height + main_clip.h) / 2 + 20
         subtitle_width = main_clip.w - 40
 
+    elif layout == 'face_track_9_16':
+        main_clip = create_face_tracked_clip(main_clip_raw, final_height, final_width)
+        video_canvas = main_clip
+        subtitle_y_pos = final_height * 0.75
+        subtitle_width = final_width - 40
+
     else: # square_center
         video_height = int(final_height * 0.7)
-        main_clip = main_clip_raw.resize(height=video_height)
-        if main_clip.w > final_width:
-            main_clip = main_clip.fx(vfx.crop, x_center=main_clip.w / 2, width=final_width)
+        
+        main_clip = create_face_tracked_clip(main_clip_raw, video_height, final_width)
         
         bg = ColorClip(size=(final_width, final_height), color=(0,0,0), duration=main_clip.duration)
         video_canvas = CompositeVideoClip([bg, main_clip.set_position('center', 'center')])
@@ -510,6 +607,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         status_callback("🔍 Анализируем видео...")
     print("Транскрибируем видео...")
     force_ai_transcription = config.get('force_ai_transcription', False)
+    # transcript_segments = []
     transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
 
     if not transcript_segments:
@@ -519,7 +617,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    # shorts_timecodes = [{'start': '00:00:22.0', 'end': '00:00:37.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
+    # shorts_timecodes = [{'start': '00:01:40.0', 'end': '00:02:10.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
     shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
@@ -564,7 +662,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
 
 if __name__ == "__main__":
-    url = "https://www.youtube.com/watch?v=2IaQdDjxViU"
+    url = "https://youtu.be/4_3VXLK_K_A?si=GVZ3IySlOPK09Ohc"
     # ================== КОНФИГУРАЦИЯ ==================
     config = {
         # Опции: 'white', 'yellow'
@@ -574,10 +672,10 @@ if __name__ == "__main__":
         'bottom_video': 'minecraft', 
         
         # Опции: 'square_top_brainrot_bottom', 'square_center', 'full_top_brainrot_bottom', 'full_center'
-        'layout': 'full_center',
+        'layout': 'square_center',
 
-        # Опции: 'word-by-word', 'phrases'
-        'subtitles_type': 'word-by-word',
+        # Опции: 'word-by-word', 'phrases', None
+        'subtitles_type': None,
 
         # Опции: True, False
         'capitalize_sentences': True

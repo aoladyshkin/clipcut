@@ -95,6 +95,9 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
         [
             InlineKeyboardButton("16:9", callback_data='full_center'),
             InlineKeyboardButton("16:9 + brainrot", callback_data='full_top_brainrot_bottom'),
+        ],
+        [
+            InlineKeyboardButton("9:16", callback_data='face_track_9_16')
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -175,6 +178,9 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             [
                 InlineKeyboardButton("16:9", callback_data='full_center'),
                 InlineKeyboardButton("16:9 + brainrot", callback_data='full_top_brainrot_bottom'),
+            ],
+            [
+                InlineKeyboardButton("9:16", callback_data='face_track_9_16')
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -258,7 +264,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await query.message.delete()
 
-    if layout_choice in ['square_center', 'full_center']:
+    if layout_choice in ['square_center', 'full_center', 'face_track_9_16']:
         context.user_data['config']['bottom_video'] = None
         logger.info(f"Layout for {query.from_user.id} is {layout_choice}, skipping bottom video selection.")
         

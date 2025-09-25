@@ -12,7 +12,8 @@ def initialize_database():
                 user_id INTEGER PRIMARY KEY,
                 balance INTEGER NOT NULL DEFAULT 10,
                 generated_shorts_count INTEGER NOT NULL DEFAULT 0,
-                referred_by INTEGER
+                referred_by INTEGER,
+                source TEXT
             )
         """)
         # Check if the referred_by column exists, and add it if it doesn't
@@ -22,8 +23,15 @@ def initialize_database():
             cursor.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
             conn.commit()
             print("Database schema updated: added 'referred_by' column to 'users' table.")
+        # Check if the source column exists, and add it if it doesn't
+        try:
+            cursor.execute("SELECT source FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE users ADD COLUMN source TEXT")
+            conn.commit()
+            print("Database schema updated: added 'source' column to 'users' table.")
 
-def get_user(user_id: int, referrer_id: Optional[int] = None) -> Optional[Tuple[int, int, int, bool]]:
+def get_user(user_id: int, referrer_id: Optional[int] = None, source: Optional[str] = None) -> Optional[Tuple[int, int, int, bool]]:
     """
     Получает данные пользователя по user_id.
     Если пользователь не найден, создает его с балансом по умолчанию.
@@ -35,7 +43,7 @@ def get_user(user_id: int, referrer_id: Optional[int] = None) -> Optional[Tuple[
         user = cursor.fetchone()
         if user is None:
             # Пользователь не найден, создаем нового
-            cursor.execute("INSERT INTO users (user_id, referred_by) VALUES (?, ?)", (user_id, referrer_id))
+            cursor.execute("INSERT INTO users (user_id, referred_by, source) VALUES (?, ?, ?)", (user_id, referrer_id, source))
             conn.commit()
             # Возвращаем данные нового пользователя
             return user_id, 10, 0, True
@@ -96,7 +104,7 @@ def get_all_users_data():
     """Возвращает все данные из таблицы users."""
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, balance, generated_shorts_count, referred_by FROM users")
+        cursor.execute("SELECT user_id, balance, generated_shorts_count, referred_by, source FROM users")
         return cursor.fetchall()
 
 def clear_database():

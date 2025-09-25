@@ -4,7 +4,7 @@ def format_config(config, balance=None):
         'square_top_brainrot_bottom': '1:1 + brainrot',
         'full_center': '16:9',
         'full_top_brainrot_bottom': '16:9 + brainrot',
-        'face_track_9_16': '9:16 (лицо в кадре)'
+        'face_track_9_16': '9:16'
     }
     video_map = {'gta': 'GTA', 'minecraft': 'Minecraft', None: 'Нет'}
     sub_type_map = {'word-by-word': 'По одному слову', 'phrases': 'По фразе', 'no_subtitles': 'Без субтитров'}

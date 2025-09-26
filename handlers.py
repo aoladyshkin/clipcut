@@ -46,6 +46,10 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
 
     url = update.message.text
+    generation_id = str(uuid.uuid4())
+    context.user_data['generation_id'] = generation_id
+    log_event(update.effective_user.id, 'config_video_url_provided', {'url': url, 'generation_id': generation_id})
+
     if "youtube.com/" not in url and "youtu.be/" not in url:
         await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на YouTube видео.")
         return GET_URL
@@ -85,6 +89,8 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     context.user_data['config']['shorts_number'] = 'auto'
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_step_shorts_number_selected', {'choice': 'auto', 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: shorts_number = 'auto'")
 
     keyboard = [
@@ -168,6 +174,8 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             return GET_SHORTS_NUMBER
 
         context.user_data['config']['shorts_number'] = number
+        generation_id = context.user_data.get('generation_id')
+        log_event(update.effective_user.id, 'config_step_shorts_number_selected', {'choice': number, 'generation_id': generation_id})
         logger.info(f"Config for {update.effective_user.id}: shorts_number = {number}")
 
         keyboard = [
@@ -202,6 +210,8 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     context.user_data['config']['subtitle_style'] = query.data
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_step_subtitle_style_selected', {'choice': query.data, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: subtitle_style = {query.data}")
 
     # Set default capitalization
@@ -235,6 +245,8 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.answer()
     choice = query.data if query.data != 'none' else None
     context.user_data['config']['bottom_video'] = choice
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_step_bottom_video_selected', {'choice': choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: bottom_video = {choice}")
 
     keyboard = [
@@ -260,6 +272,8 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await query.answer()
     layout_choice = query.data
     context.user_data['config']['layout'] = layout_choice
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_step_layout_selected', {'choice': layout_choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: layout = {layout_choice}")
 
     await query.message.delete()
@@ -333,6 +347,8 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer()
     choice = query.data
     context.user_data['config']['subtitles_type'] = choice
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_step_subtitles_type_selected', {'choice': choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: subtitles_type = {choice}")
 
     if choice == 'no_subtitles':
@@ -400,8 +416,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # Пока что просто пропускаем, если баланс > 0, что уже проверено в start.
         pass
 
-    generation_id = str(uuid.uuid4())
-    context.user_data['generation_id'] = generation_id
+    generation_id = context.user_data.get('generation_id')
 
     processing_queue = context.bot_data['processing_queue']
     task_data = {
@@ -435,6 +450,10 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Отменяет текущую конфигурацию и возвращает к началу."""
     query = update.callback_query
     await query.answer()
+
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_cancelled', {'generation_id': generation_id})
+
     context.user_data.clear()
     context.user_data['config'] = {}
 

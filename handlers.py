@@ -51,13 +51,13 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return GET_URL
 
     # Проверяем доступность видео
-    is_available, message = check_video_availability(url)
+    is_available, message, err = check_video_availability(url)
     if not is_available:
         await update.message.reply_text(message)
         log_event(
             update.effective_user.id,
             'video_availability_error',
-            {'url': url, 'error': message}
+            {'url': url, 'error': err}
         )
         return GET_URL
 

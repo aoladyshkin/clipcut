@@ -194,21 +194,42 @@ async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT
         return
 
     try:
-        user_id_str, amount_str = context.args
-        user_id = int(user_id_str)
+        if len(context.args) != 2:
+            await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id1,user_id2,...> <amount>")
+            return
+
+        user_ids_str = context.args[0]
+        amount_str = context.args[1]
+        
+        user_ids = [int(uid.strip()) for uid in user_ids_str.split(',')]
         amount = int(amount_str)
 
         if amount < 0:
             await update.message.reply_text("Баланс не может быть отрицательным.")
             return
 
-        set_user_balance(user_id, amount)
-        _, new_balance, _, _ = get_user(user_id)
+        success_users = []
+        failed_users = []
 
-        await update.message.reply_text(f"Баланс пользователя {user_id} установлен в {new_balance}.")
+        for user_id in user_ids:
+            try:
+                set_user_balance(user_id, amount)
+                success_users.append(str(user_id))
+            except Exception as e:
+                logger.error(f"Failed to set balance for user {user_id}: {e}")
+                failed_users.append(str(user_id))
+        
+        response_parts = []
+        if success_users:
+            response_parts.append(f"Баланс успешно установлен в {amount} для пользователей: {', '.join(success_users)}.")
+        
+        if failed_users:
+            response_parts.append(f"Не удалось установить баланс для пользователей: {', '.join(failed_users)}.")
+
+        await update.message.reply_text("\n".join(response_parts))
 
     except (ValueError, IndexError):
-        await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id> <amount>")
+        await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id1,user_id2,...> <amount>")
 
 
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

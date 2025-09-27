@@ -283,7 +283,8 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
         chat_id=query.message.chat_id,
         text=f"Подтвердите настройки:\n\n{settings_text}",
         reply_markup=reply_markup,
-        parse_mode="HTML"
+        parse_mode="HTML",
+        disable_web_page_preview=True 
     )
 
     return CONFIRM_CONFIG
@@ -420,7 +421,8 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
             chat_id=query.message.chat_id,
             text=f"<b>Подтвердите настройки:</b>\n\n{settings_text}",
             reply_markup=reply_markup,
-            parse_mode="HTML"
+            parse_mode="HTML",
+            disable_web_page_preview=True 
         )
         return CONFIRM_CONFIG
     else:

@@ -121,7 +121,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         asyncio.run_coroutine_threadsafe(send_status_update_async(status_text), main_loop)
 
     async def send_video_async(file_path, hook, start, end):
-        caption = f"<b>Hook</b>: {hook}\n\n<b>Таймкоды</b>: {start} – {end}"
+        caption = f"<b>Hook</b>: {hook}\n\n<b>Таймкоды</b>: {start[:-2]} – {end[:-2]}"
         try:
             with open(file_path, 'rb') as video_file:
                 await bot.send_video(

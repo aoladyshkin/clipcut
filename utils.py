@@ -21,7 +21,7 @@ def format_config(config, balance=None, is_demo=False):
     if is_demo:
         balance_text = ""
     elif balance is not None:
-        balance_text = f"<b>Ваш баланс</b>: {balance} шортсов\n<b>Будет списано</b>: {cost} шортс(ов)"
+        balance_text = f"<b>Ваш баланс</b>: {balance} шортсов\n"
     else:
         balance_text = ""
 

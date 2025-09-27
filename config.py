@@ -58,5 +58,10 @@ DEMO_CONFIG = {
         'subtitles_type': 'word-by-word',
         'subtitle_style': 'white',
         'capitalize_sentences': False
-    }
+    },
+    'video_message_params': [
+        {'start': '00:00:00', 'end': '00:00:00', 'hook': 'demo_hook1' },
+        {'start': '00:00:01', 'end': '00:00:00', 'hook': 'demo_hook2' },
+        {'start': '00:00:02', 'end': '00:00:00', 'hook': 'demo_hook3' }
+    ]
 }

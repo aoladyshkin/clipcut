@@ -2,6 +2,7 @@ import asyncio
 import os
 import logging
 from telegram.error import Forbidden
+from config import DEMO_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +44,31 @@ async def simulate_demo_processing(context, chat_id, status_message_id):
             logger.error(f"No videos found in demo shorts directory: {demo_shorts_dir}")
             return
 
-        for filename in demo_files:
+        video_params = DEMO_CONFIG.get('video_message_params', [])
+
+        for i, filename in enumerate(demo_files):
             video_path = os.path.join(demo_shorts_dir, filename)
+            
+            # Get params for the current video, with a fallback
+            params = video_params[i] if i < len(video_params) else {}
+            hook = params.get('hook', 'Демо-хук')
+            start = params.get('start', '00:00')
+            end = params.get('end', '00:15')
+            caption = f"<b>Hook</b>: {hook}\n\n<b>Таймкоды</b>: {start} – {end}"
+
             try:
                 with open(video_path, 'rb') as video_file:
-                    await context.bot.send_video(chat_id=chat_id, video=video_file)
+                    await context.bot.send_video(
+                        chat_id=chat_id,
+                        video=video_file,
+                        caption=caption, 
+                        parse_mode="HTML", 
+                        width=720, 
+                        height=1280, 
+                        supports_streaming=True,
+                        read_timeout=600,
+                        write_timeout=600,
+                    )
                 await asyncio.sleep(10)
             except Forbidden:
                 logger.warning(f"Bot is blocked by the user {chat_id}. Stopping demo video sending.")

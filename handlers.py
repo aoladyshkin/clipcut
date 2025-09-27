@@ -463,7 +463,7 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data['balance'] = balance
     
     await query.edit_message_text(
-        f"Настройки отменены. У вас на балансе {balance} шортсов.\nПришли мне ссылку на YouTube видео, чтобы начать заново."
+        f"Настройки отменены.\n📎 Отправь ссылку на видео — и через пару минут получишь готовые ролики для Shorts, Reels и TikTok."
     )
     return GET_URL
 

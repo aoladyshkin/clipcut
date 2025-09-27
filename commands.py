@@ -72,7 +72,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
 
     base_commands = [
-        BotCommand(command="start", description="Начать работу"),
+        BotCommand(command="start", description="Сгенерировать ролики"),
         BotCommand(command="help", description="Помощь и описание"),
         BotCommand(command="balance", description="Показать баланс"),
         BotCommand(command="topup", description="Пополнить баланс"),
@@ -99,8 +99,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['config'] = {}
     context.user_data['balance'] = balance
     
+    keyboard = [
+        [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok ⚡️\n\nВаш баланс: {balance} шортсов.\n\n👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>",
+        f"👋 Привет! Я превращаю YouTube-видео в вирусные вертикальные шортсы 📱\n\n"
+        f"📎 Отправь ссылку на видео — и через несколько минут получишь готовые ролики для Shorts, Reels и TikTok.",
+        reply_markup=reply_markup,
         parse_mode="HTML"
     )
     return GET_URL

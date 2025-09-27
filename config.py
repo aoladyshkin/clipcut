@@ -47,3 +47,16 @@ DISCOUNT_PRICES = {
         {"shorts": 100, "stars": 1999},
     ]
 }
+
+DEMO_CONFIG = {
+    "url": "https://youtu.be/4_3VXLK_K_A?si=GVZ3IySlOPK09Ohc",
+    "config": {
+        "force_ai_transcription": False,
+        'shorts_number': 'auto',
+        'layout': 'face_track_9_16',
+        'bottom_video': None,
+        'subtitles_type': 'word-by-word',
+        'subtitle_style': 'white',
+        'capitalize_sentences': False
+    }
+}

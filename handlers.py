@@ -26,11 +26,60 @@ from states import (
     PROCESSING
 )
 from datetime import datetime, timezone
-from config import REGULAR_PRICES, DISCOUNT_PRICES, FEEDBACK_GROUP_ID
+from config import REGULAR_PRICES, DISCOUNT_PRICES, FEEDBACK_GROUP_ID, DEMO_CONFIG
+from processing.demo import simulate_demo_processing
 
 logger = logging.getLogger(__name__)
 
 path_to_config_examples = "config_examples/"
+
+async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the demo process by loading the demo config."""
+    query = update.callback_query
+    await query.answer()
+
+    # Import utility function
+    from utils import format_config
+    import uuid
+
+    # Clear any previous config and set up demo data
+    context.user_data.clear()
+    # Create a deep copy of the config to avoid modifying the original
+    demo_config_copy = {
+        "url": DEMO_CONFIG["url"],
+        "config": DEMO_CONFIG["config"].copy()
+    }
+    context.user_data.update(demo_config_copy)
+    context.user_data['is_demo'] = True
+    context.user_data['generation_id'] = str(uuid.uuid4())
+    
+    # We don't need to fetch the real balance for the demo
+    balance = 0 
+    context.user_data['balance'] = balance
+
+    log_event(query.from_user.id, 'demo_started', {'generation_id': context.user_data['generation_id']})
+    logger.info(f"User {query.from_user.id} started a demo.")
+
+    settings_text = format_config(context.user_data['config'], balance, is_demo=True)
+
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Подтвердить", callback_data='confirm_demo'),
+            InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.message.delete()
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=f"<b>✨ Демонстрационный режим запущен!</b>\n\n🎬 Исходное видео: {context.user_data['url']}{settings_text}",
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+
+    return CONFIRM_CONFIG
 
 async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Сохраняет URL и запрашивает количество шортсов."""
@@ -445,6 +494,25 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     return PROCESSING
+
+
+async def confirm_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the confirmation of a demo generation."""
+    query = update.callback_query
+    await query.answer()
+
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'demo_confirmed', {'generation_id': generation_id})
+
+    status_message = await query.edit_message_text(text="⚡ Ваш запрос взят в работу. Начинаем скачивание и обработку демо-видео...")
+    
+    asyncio.create_task(simulate_demo_processing(
+        context=context,
+        chat_id=query.message.chat.id,
+        status_message_id=status_message.message_id
+    ))
+
+    return ConversationHandler.END
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Отменяет текущую конфигурацию и возвращает к началу."""

@@ -1,4 +1,4 @@
-def format_config(config, balance=None):
+def format_config(config, balance=None, is_demo=False):
     layout_map = {
         'square_center': '1:1',
         'square_top_brainrot_bottom': '1:1 + brainrot',
@@ -6,25 +6,34 @@ def format_config(config, balance=None):
         'full_top_brainrot_bottom': '16:9 + brainrot',
         'face_track_9_16': '9:16'
     }
-    video_map = {'gta': 'GTA', 'minecraft': 'Minecraft', None: 'Нет'}
-    sub_type_map = {'word-by-word': 'По одному слову', 'phrases': 'По фразе', 'no_subtitles': 'Без субтитров'}
-    sub_style_map = {'white': 'Белый', 'yellow': 'Желтый', 'purple': 'Фиолетовый', 'green': 'Зелёный', None: 'Нет'}
+    video_map = {'gta': 'GTA', 'minecraft': 'Minecraft', None: 'нет'}
+    sub_type_map = {'word-by-word': 'по одному слову', 'phrases': 'по фразе', 'no_subtitles': 'без субтитров'}
+    sub_style_map = {'white': 'белый', 'yellow': 'желтый', 'purple': 'фиолетовый', 'green': 'зелёный', None: 'нет'}
     shorts_number = config.get('shorts_number', 'Авто')
+
     if shorts_number != 'auto':
         shorts_number_text = str(shorts_number)
+        cost = shorts_number
     else:
-        shorts_number_text = 'Авто'
+        shorts_number_text = 'Автоматически подберём лучшие фрагменты'
+        cost = 1  # Assume 1 for 'auto' for display purposes
 
-    balance_text = f"<b>Ваш баланс</b>: {balance} шортсов\n" if balance is not None else ""
+    if is_demo:
+        balance_text = ""
+    elif balance is not None:
+        balance_text = f"<b>Ваш баланс</b>: {balance} шортсов\n<b>Будет списано</b>: {cost} шортс(ов)"
+    else:
+        balance_text = ""
 
     settings_text = (
-        f"{balance_text}\n"
-        f"<b>Количество шортсов</b>: {shorts_number_text}\n"
-        f"<b>Сетка</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
-        f"<b>Brainrot видео</b>: {video_map.get(config.get('bottom_video'), 'Нет')}\n"
-        f"<b>Тип субтитров</b>: {sub_type_map.get(config.get('subtitles_type'), 'Не выбрано')}\n"
+        f"<b>✂️ Количество шортсов</b>: {shorts_number_text}\n"
+        f"<b>📐 Формат</b>: {layout_map.get(config.get('layout'), 'Не выбрано')}\n"
+        f"<b>🧠 Brainrot</b>: {video_map.get(config.get('bottom_video'), 'выключен')}\n"
+        f"<b>🔤 Субтитры</b>: {sub_type_map.get(config.get('subtitles_type'), 'Не выбрано')}\n"
     )
     if config.get('subtitles_type') != 'no_subtitles':
-        settings_text += f"<b>Цвет субтитров</b>: {sub_style_map.get(config.get('subtitle_style'), 'Не выбрано')}\n"
+        settings_text += f"<b>🎨 Цвет субтитров</b>: {sub_style_map.get(config.get('subtitle_style'), 'Не выбрано')}\n"
+        
+    settings_text += f"\n{balance_text}" if balance_text else ""
 
     return settings_text

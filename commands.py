@@ -99,14 +99,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['config'] = {}
     context.user_data['balance'] = balance
     
-    keyboard = [
-        [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
-    ]
+    if is_new:
+        keyboard = [
+            [InlineKeyboardButton("Попробовать на демо-видео", callback_data='start_demo')],
+            [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
+        ]
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"👋 Привет! Я превращаю YouTube-видео в вирусные вертикальные шортсы 📱\n\n"
-        f"📎 Отправь ссылку на видео — и через несколько минут получишь готовые ролики для Shorts, Reels и TikTok.",
+        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok ⚡️", # \n\nВаш баланс: {balance} шортсов.
         reply_markup=reply_markup,
         parse_mode="HTML"
     )

@@ -4,6 +4,7 @@ import os
 import shutil
 from dotenv import load_dotenv
 from pathlib import Path
+import logging
 
 load_dotenv()
 import subprocess
@@ -32,6 +33,8 @@ from processing.subtitles import create_subtitle_clips, get_subtitle_items
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 from pytubefix import YouTube
+
+logger = logging.getLogger(__name__)
 
 
 def format_seconds_to_hhmmss(seconds):
@@ -108,7 +111,7 @@ def check_video_availability(url: str) -> (bool, str, str):
         error_message = f"Произошла непредвиденная ошибка при проверке видео: {e}"
         print(error_message)
         if "age restricted" in str(e).lower():
-            return False, "⚠️ Обработка не удалась – YouTube пометил этот ролик как 18+, и доступ к исходнику ограничён.\n\nВыбери другой ролик без ограничений — и мы всё сделаем ✨", "age restricted"
+            return False, "⚠️ Обработка не удалась – YouTube пометил этот ролик как 18+, и доступ к исходнику ограничен.\n\nВыбери другой ролик без ограничений — и мы всё сделаем ✨", "age restricted"
         if "private" in str(e).lower():
             return False, "Это видео приватное и не может быть скачано.", "private"
         if "unavailable" in str(e).lower():
@@ -189,7 +192,6 @@ def download_audio_only(url, audio_path):
     temp_path.unlink(missing_ok=True)
 
     return audio_path
-
 
 def merge_video_audio(video_path, audio_path, output_path):
 
@@ -661,6 +663,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     return successful_sends, extra_found
 
 
+
+
+
 if __name__ == "__main__":
     url = "https://youtu.be/4_3VXLK_K_A?si=GVZ3IySlOPK09Ohc"
     # ================== КОНФИГУРАЦИЯ ==================
@@ -671,7 +676,7 @@ if __name__ == "__main__":
         # Опции: 'gta', 'minecraft' или None для черного фона
         'bottom_video': 'minecraft', 
         
-        # Опции: 'square_top_brainrot_bottom', 'square_center', 'full_top_brainrot_bottom', 'full_center'
+        # Опции: 'square_top_brainrot_bottom', 'square_center', 'full_top_brainrot_bottom', 'full_center', 'face_track_9_16'
         'layout': 'square_center',
 
         # Опции: 'word-by-word', 'phrases', None

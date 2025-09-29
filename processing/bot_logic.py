@@ -122,7 +122,6 @@ def download_video_only(url, video_path):
     """Downloads the best available video up to 720p using pytubefix."""
     try:
         yt = YouTube(url)
-        # Try to get a 720p stream, otherwise get the highest resolution video-only stream
         stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
         if not stream:
             stream = yt.streams.filter(type="video", file_extension='mp4').order_by('resolution').desc().first()

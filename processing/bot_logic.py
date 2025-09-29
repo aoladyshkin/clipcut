@@ -434,12 +434,14 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
         subclip_end = min(t + step, main_clip_resized.duration)
         subclip = main_clip_resized.subclip(t, subclip_end)
         cropped_subclip = subclip.fx(vfx.crop, x_center=clamped_crop_x_center, width=target_width)
-        subclips.append(cropped_subclip)
+        subclips.append(cropped_subclip.without_audio())
 
     if not subclips:
         return main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=target_width)
 
-    return concatenate_videoclips(subclips)
+    final_video = concatenate_videoclips(subclips)
+    final_video.audio = main_clip_raw.audio
+    return final_video
 
 def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, final_height):
     if layout == 'square_top_brainrot_bottom':

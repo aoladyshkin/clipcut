@@ -636,10 +636,10 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = [
-       { "start": '00:01:49.0', "end": "00:02:10.0", "hook": "Деньги должны стать божеством" }
-    ]
-    # shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    # shorts_timecodes = [
+    #    { "start": '00:01:49.0', "end": "00:02:10.0", "hook": "Деньги должны стать божеством" }
+    # ]
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")

@@ -49,7 +49,7 @@ DISCOUNT_PRICES = {
 }
 
 DEMO_CONFIG = {
-    "url": "https://youtu.be/4_3VXLK_K_A?si=GVZ3IySlOPK09Ohc",
+    "url": "https://www.youtube.com/watch?v=zPrwTpo4TiM",
     "config": {
         "force_ai_transcription": False,
         'shorts_number': 'auto',

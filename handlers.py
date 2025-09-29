@@ -73,7 +73,7 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await query.message.delete()
     await context.bot.send_message(
         chat_id=query.message.chat_id,
-        text=f"<b>✨ Демонстрационный режим запущен!</b>\n\n🎬 Исходное видео: {context.user_data['url']}{settings_text}",
+        text=f"<b>✨ Демонстрационный режим запущен!</b>\n\n🎬 Исходное видео: {context.user_data['url']}\n{settings_text}",
         reply_markup=reply_markup,
         parse_mode="HTML",
         disable_web_page_preview=True

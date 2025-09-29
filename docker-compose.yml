@@ -10,6 +10,7 @@ services:
       - ./keepers:/app/keepers
       - ./fonts:/app/fonts
       - ./config_examples:/app/config_examples
+      - ./demo_shorts:/app/demo_shorts
     restart: unless-stopped
     logging:
       driver: "json-file"

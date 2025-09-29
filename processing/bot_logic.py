@@ -366,60 +366,70 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
     subclips = []
     
     crop_x_center = main_clip_resized.w / 2
+    target_crop_x_center = main_clip_resized.w / 2
     crop_half_width = target_width / 2
     tracked_face_box = None
 
-    step = 0.25
+    # Smoothing factor for camera movement. Lower value = smoother/slower.
+    smoothing_factor = 1.0
+
+    step = 0.25  # Process video in chunks of 0.25 seconds
     for t in np.arange(0, main_clip_resized.duration, step):
         frame = main_clip_resized.get_frame(t)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
-        
+        is_new_face = False
+
         if len(faces) > 0:
             if tracked_face_box is None:
-                # No face is being tracked, pick a new one (largest).
+                # Case 1: No face was tracked before. This is a new face.
                 tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+                is_new_face = True
             else:
-                # A face is being tracked. Find the closest face in the new frame.
+                # Case 2: A face was being tracked. Find it in the new frame.
                 previous_center = get_box_center(tracked_face_box)
+                closest_face = min(faces, key=lambda f: distance(get_box_center(f), previous_center))
                 
-                closest_face = None
-                min_dist = float('inf')
-                for face in faces:
-                    d = distance(get_box_center(face), previous_center)
-                    if d < min_dist:
-                        min_dist = d
-                        closest_face = face
-                
-                # If the closest face is close enough, update the tracked face
-                max_allowed_distance = tracked_face_box[2] * 1.5 
-                if min_dist < max_allowed_distance:
+                max_allowed_distance = tracked_face_box[2] * 1.5
+                if distance(get_box_center(closest_face), previous_center) < max_allowed_distance:
+                    # The same face is still being tracked.
                     tracked_face_box = closest_face
                 else:
-                    # We lost the track. Reset and pick the largest face again.
+                    # Case 3: The old face was lost. This is a new face.
                     tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+                    is_new_face = True
 
-            # Determine crop based on the tracked face
-            face_center_x = get_box_center(tracked_face_box)[0]
-            w = tracked_face_box[2]
+            face_center_x, _ = get_box_center(tracked_face_box)
             
-            visible_left = crop_x_center - crop_half_width
-            visible_right = crop_x_center + crop_half_width
-            buffer = w * 0.2
-
-            if not (visible_left + buffer < face_center_x < visible_right - buffer):
+            if is_new_face:
+                # INSTANT JUMP: A new face appeared, so snap the camera immediately.
                 crop_x_center = face_center_x
+                target_crop_x_center = face_center_x
+            else:
+                # SMOOTH PAN: The same face is moving. Only adjust if it nears the edge.
+                face_width = tracked_face_box[2]
+                visible_left = crop_x_center - crop_half_width
+                visible_right = crop_x_center + crop_half_width
+                buffer = face_width * 0.2 # Buffer is now 20% of the face width
+
+                if not (visible_left + buffer < face_center_x < visible_right - buffer):
+                    target_crop_x_center = face_center_x
         else:
-            # No faces detected, lose track
+            # No faces detected, lose track.
             tracked_face_box = None
+
+        # Apply smoothing towards the target. 
+        # If no move is needed, target equals current, so crop_x_center stays put.
+        # If it's a new face, this will have no effect since crop_x_center was already snapped.
+        crop_x_center = (smoothing_factor * target_crop_x_center) + ((1 - smoothing_factor) * crop_x_center)
 
         # Clamp the crop_x_center to avoid black bars
         min_x = crop_half_width
         max_x = main_clip_resized.w - crop_half_width
         clamped_crop_x_center = max(min_x, min(crop_x_center, max_x))
-        
         crop_x_center = clamped_crop_x_center
+        target_crop_x_center = max(min_x, min(target_crop_x_center, max_x))
 
         subclip_end = min(t + step, main_clip_resized.duration)
         subclip = main_clip_resized.subclip(t, subclip_end)
@@ -599,6 +609,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     
     # скачиваем аудио
     audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
+    # audio_only = Path(out_dir) / "audio_only.ogg"
 
     if not video_only or not audio_only:
         raise Exception("Произошла ошибка при скачивании видео – мы уже о ней знаем и совсем скоро всё починим!")

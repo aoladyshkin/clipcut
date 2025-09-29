@@ -60,7 +60,7 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     log_event(query.from_user.id, 'demo_started', {'generation_id': context.user_data['generation_id']})
     logger.info(f"User {query.from_user.id} started a demo.")
 
-    settings_text = format_config(context.user_data['config'], balance, is_demo=True)
+    settings_text = format_config(context.user_data['config'], balance, is_demo=True) 
 
     keyboard = [
         [

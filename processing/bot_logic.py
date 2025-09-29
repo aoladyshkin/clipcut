@@ -123,7 +123,7 @@ def download_video_only(url, video_path):
     try:
         yt = YouTube(url)
         # Try to get a 720p stream, otherwise get the highest resolution video-only stream
-        stream = yt.streams.filter(res="720p", progressive=False, file_extension='mp4').first()
+        stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
         if not stream:
             stream = yt.streams.filter(type="video", file_extension='mp4').order_by('resolution').desc().first()
         
@@ -591,6 +591,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     config['bottom_video_path'] = video_map.get(config['bottom_video'])
 
     out_dir = get_unique_output_dir() 
+    # out_dir = './output1'
     
     print("Скачиваем видео с YouTube...")
     # скачиваем видео
@@ -604,6 +605,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     # Объединяем видео и аудио
     video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
+    # video_full = Path(out_dir) / "video.mp4"
 
     if status_callback:
         status_callback("🔍 Анализируем видео...")
@@ -619,7 +621,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    # shorts_timecodes = [{'start': '00:01:40.0', 'end': '00:02:10.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
+    # shorts_timecodes = [
+    #    { "start": '00:01:49.0', "end": "00:02:10.0", "hook": "Деньги должны стать божеством" }
+    # ]
     shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:

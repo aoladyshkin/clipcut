@@ -4,6 +4,7 @@ import os
 import shutil
 from dotenv import load_dotenv
 from pathlib import Path
+import logging
 
 load_dotenv()
 import subprocess
@@ -32,6 +33,8 @@ from processing.subtitles import create_subtitle_clips, get_subtitle_items
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 from pytubefix import YouTube
+
+logger = logging.getLogger(__name__)
 
 
 def format_seconds_to_hhmmss(seconds):
@@ -108,7 +111,7 @@ def check_video_availability(url: str) -> (bool, str, str):
         error_message = f"Произошла непредвиденная ошибка при проверке видео: {e}"
         print(error_message)
         if "age restricted" in str(e).lower():
-            return False, "⚠️ Обработка не удалась – YouTube пометил этот ролик как 18+, и доступ к исходнику ограничён.\n\nВыбери другой ролик без ограничений — и мы всё сделаем ✨", "age restricted"
+            return False, "⚠️ Обработка не удалась – YouTube пометил этот ролик как 18+, и доступ к исходнику ограничен.\n\nВыбери другой ролик без ограничений — и мы всё сделаем ✨", "age restricted"
         if "private" in str(e).lower():
             return False, "Это видео приватное и не может быть скачано.", "private"
         if "unavailable" in str(e).lower():
@@ -120,7 +123,7 @@ def download_video_only(url, video_path):
     try:
         yt = YouTube(url)
         # Try to get a 720p stream, otherwise get the highest resolution video-only stream
-        stream = yt.streams.filter(res="720p", progressive=False, file_extension='mp4').first()
+        stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
         if not stream:
             stream = yt.streams.filter(type="video", file_extension='mp4').order_by('resolution').desc().first()
         
@@ -189,7 +192,6 @@ def download_audio_only(url, audio_path):
     temp_path.unlink(missing_ok=True)
 
     return audio_path
-
 
 def merge_video_audio(video_path, audio_path, output_path):
 
@@ -589,6 +591,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     config['bottom_video_path'] = video_map.get(config['bottom_video'])
 
     out_dir = get_unique_output_dir() 
+    # out_dir = './output1'
     
     print("Скачиваем видео с YouTube...")
     # скачиваем видео
@@ -602,6 +605,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     # Объединяем видео и аудио
     video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
+    # video_full = Path(out_dir) / "video.mp4"
 
     if status_callback:
         status_callback("🔍 Анализируем видео...")
@@ -617,7 +621,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    # shorts_timecodes = [{'start': '00:01:40.0', 'end': '00:02:10.0', 'hook': '«Маркетинга в России нет». Формула, которая всё объясняет'}]
+    # shorts_timecodes = [
+    #    { "start": '00:01:49.0', "end": "00:02:10.0", "hook": "Деньги должны стать божеством" }
+    # ]
     shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
@@ -661,6 +667,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     return successful_sends, extra_found
 
 
+
+
+
 if __name__ == "__main__":
     url = "https://youtu.be/4_3VXLK_K_A?si=GVZ3IySlOPK09Ohc"
     # ================== КОНФИГУРАЦИЯ ==================
@@ -671,7 +680,7 @@ if __name__ == "__main__":
         # Опции: 'gta', 'minecraft' или None для черного фона
         'bottom_video': 'minecraft', 
         
-        # Опции: 'square_top_brainrot_bottom', 'square_center', 'full_top_brainrot_bottom', 'full_center'
+        # Опции: 'square_top_brainrot_bottom', 'square_center', 'full_top_brainrot_bottom', 'full_center', 'face_track_9_16'
         'layout': 'square_center',
 
         # Опции: 'word-by-word', 'phrases', None

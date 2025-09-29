@@ -72,7 +72,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
 
     base_commands = [
-        BotCommand(command="start", description="Начать работу"),
+        BotCommand(command="start", description="Сгенерировать ролики"),
         BotCommand(command="help", description="Помощь и описание"),
         BotCommand(command="balance", description="Показать баланс"),
         BotCommand(command="topup", description="Пополнить баланс"),
@@ -99,8 +99,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['config'] = {}
     context.user_data['balance'] = balance
     
+    if is_new:
+        keyboard = [
+            [InlineKeyboardButton("Попробовать на демо-видео", callback_data='start_demo')],
+            [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
+        ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok ⚡️\n\nВаш баланс: {balance} шортсов.\n\n👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>",
+        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok ⚡️", # \n\nВаш баланс: {balance} шортсов.
+        reply_markup=reply_markup,
         parse_mode="HTML"
     )
     return GET_URL
@@ -194,21 +207,42 @@ async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT
         return
 
     try:
-        user_id_str, amount_str = context.args
-        user_id = int(user_id_str)
+        if len(context.args) != 2:
+            await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id1,user_id2,...> <amount>")
+            return
+
+        user_ids_str = context.args[0]
+        amount_str = context.args[1]
+        
+        user_ids = [int(uid.strip()) for uid in user_ids_str.split(',')]
         amount = int(amount_str)
 
         if amount < 0:
             await update.message.reply_text("Баланс не может быть отрицательным.")
             return
 
-        set_user_balance(user_id, amount)
-        _, new_balance, _, _ = get_user(user_id)
+        success_users = []
+        failed_users = []
 
-        await update.message.reply_text(f"Баланс пользователя {user_id} установлен в {new_balance}.")
+        for user_id in user_ids:
+            try:
+                set_user_balance(user_id, amount)
+                success_users.append(str(user_id))
+            except Exception as e:
+                logger.error(f"Failed to set balance for user {user_id}: {e}")
+                failed_users.append(str(user_id))
+        
+        response_parts = []
+        if success_users:
+            response_parts.append(f"Баланс успешно установлен в {amount} для пользователей: {', '.join(success_users)}.")
+        
+        if failed_users:
+            response_parts.append(f"Не удалось установить баланс для пользователей: {', '.join(failed_users)}.")
+
+        await update.message.reply_text("\n".join(response_parts))
 
     except (ValueError, IndexError):
-        await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id> <amount>")
+        await update.message.reply_text("Неверный формат команды. Используйте: /setbalance <user_id1,user_id2,...> <amount>")
 
 
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

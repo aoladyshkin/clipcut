@@ -411,7 +411,7 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
                 face_width = tracked_face_box[2]
                 visible_left = crop_x_center - crop_half_width
                 visible_right = crop_x_center + crop_half_width
-                buffer = face_width * 0.5 # Buffer is now 20% of the face width
+                buffer = face_width * 0.5
 
                 if not (visible_left + buffer < face_center_x < visible_right - buffer):
                     target_crop_x_center = face_center_x

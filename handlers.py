@@ -492,7 +492,8 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     url = context.user_data['url']
     await query.edit_message_text(
         text=f"⏳ Ваш запрос добавлен в очередь (вы <b>#{processing_queue.qsize()} в очереди</b>). Вы получите уведомление, когда обработка начнется.\n\n<b>Ваши настройки:</b>\nURL: {url}\n{settings_text}",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        disable_web_page_preview=True
     )
 
     return PROCESSING

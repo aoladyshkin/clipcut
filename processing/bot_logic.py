@@ -115,8 +115,8 @@ def check_video_availability(url: str) -> (bool, str, str):
         if "private" in str(e).lower():
             return False, "Это видео приватное и не может быть скачано.", "private"
         if "unavailable" in str(e).lower():
-            return False, "⚠️ К сожалению, мы не смогли обработать это видео – владелец ролика ограничил его показ по странам и наш сервер не имеет к нему доступа.\nПопробуйте загрузить другое видео — всё должно сработать корректно ✅\n\nСпасибо, что используете Shorts Factory 🙌", e
-        return False, f"Видео недоступно. Пожалуйста, проверьте ссылку или попробуйте другое видео.", e
+            return False, "⚠️ К сожалению, мы не смогли обработать это видео – владелец ролика ограничил его показ по странам и наш сервер не имеет к нему доступа.\nПопробуйте загрузить другое видео — всё должно сработать корректно ✅\n\nСпасибо, что используете Shorts Factory 🙌", str(e)[:100]
+        return False, f"Видео недоступно. Пожалуйста, проверьте ссылку или попробуйте другое видео.", str(e)[:100]
 
 def download_video_only(url, video_path):
     """Downloads the best available video up to 720p using pytubefix."""
@@ -139,7 +139,7 @@ def download_video_only(url, video_path):
         print(f"An error occurred with pytubefix while downloading video: {e}")
         return None
 
-def download_audio_only(url, audio_path):
+def download_audio_only(url, audio_path, lang='ru'):
     """
     Downloads audio using pytubefix and converts it for Whisper.
     Falls back to yt-dlp if pytubefix fails.
@@ -161,9 +161,10 @@ def download_audio_only(url, audio_path):
     except Exception as e:
         print(f"pytubefix failed: {e}. Falling back to yt-dlp for audio.")
         try:
+            format_selector = f"bestaudio[lang={lang}]/bestaudio"
             subprocess.run([
                 "python3", "-m", "yt_dlp",
-                "-f", "bestaudio",
+                "-f", format_selector,
                 "--user-agent", "Mozilla/5.0",
                 "-o", str(temp_path),
                 url
@@ -610,7 +611,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
     
     # скачиваем аудио
-    audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
+    audio_lang = config.get('audio_lang', 'ru')
+    audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg", lang=audio_lang)
     # audio_only = Path(out_dir) / "audio_only.ogg"
 
     if not video_only or not audio_only:

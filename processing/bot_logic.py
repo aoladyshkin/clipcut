@@ -600,42 +600,42 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     }
     config['bottom_video_path'] = video_map.get(config['bottom_video'])
 
-    # out_dir = get_unique_output_dir() 
-    out_dir = './output1'
+    out_dir = get_unique_output_dir() 
+    # out_dir = './output1'
     
     print("Скачиваем видео с YouTube...")
     # скачиваем видео
-    # video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
+    video_only = download_video_only(url, Path(out_dir) / "video_only.mp4")
     
     # скачиваем аудио
-    # audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
-    audio_only = Path(out_dir) / "audio_only.ogg"
+    audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg")
+    # audio_only = Path(out_dir) / "audio_only.ogg"
 
-    # if not video_only or not audio_only:
-    #     raise Exception("Произошла ошибка при скачивании видео – мы уже о ней знаем и совсем скоро всё починим!")
+    if not video_only or not audio_only:
+        raise Exception("Произошла ошибка при скачивании видео – мы уже о ней знаем и совсем скоро всё починим!")
 
     # Объединяем видео и аудио
-    # video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
-    video_full = Path(out_dir) / "video.mp4"
+    video_full = merge_video_audio(video_only, audio_only, Path(out_dir) / "video.mp4")
+    # video_full = Path(out_dir) / "video.mp4"
 
     if status_callback:
         status_callback("🔍 Анализируем видео...")
     print("Транскрибируем видео...")
     force_ai_transcription = config.get('force_ai_transcription', False)
-    transcript_segments = []
-    # transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
+    # transcript_segments = []
+    transcript_segments, lang_code = get_transcript_segments_and_file(url, out_dir=Path(out_dir), audio_path=(Path(out_dir) / "audio_only.ogg"), force_whisper=force_ai_transcription)
 
-    # if not transcript_segments:
-    #     print("Не удалось получить транскрипцию.")
-    #     return 0, 0
+    if not transcript_segments:
+        print("Не удалось получить транскрипцию.")
+        return 0, 0
     
     # Получение смысловых кусков через GPT
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
-    shorts_timecodes = [
-       { "start": '00:01:49.0', "end": "00:02:10.0", "hook": "Деньги должны стать божеством" }
-    ]
-    # shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
+    # shorts_timecodes = [
+    #    { "start": '00:01:49.0', "end": "00:02:10.0", "hook": "Деньги должны стать божеством" }
+    # ]
+    shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
@@ -667,9 +667,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
                 print(f"A future failed when sending video: {e}")
 
     # если всё ок, можно удалить временный аудиофайл
-    # if os.path.exists(audio_only):
-    #     try: os.remove(audio_only)
-    #     except OSError: pass
+    if os.path.exists(audio_only):
+        try: os.remove(audio_only)
+        except OSError: pass
     
     if deleteOutputAfterSending:
         shutil.rmtree(out_dir)

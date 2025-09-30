@@ -38,13 +38,6 @@ def initialize_database():
             cursor.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'ru'")
             conn.commit()
             print("Database schema updated: added 'language' column to 'users' table.")
-        
-        # One-time update for existing users to set default language to 'ru'
-        cursor.execute("SELECT 1 FROM users WHERE language = 'en' LIMIT 1")
-        if cursor.fetchone():
-            cursor.execute("UPDATE users SET language = 'ru' WHERE language = 'en'")
-            conn.commit()
-            print("Updated existing users' language to 'ru'.")
 
 
 def get_user(user_id: int, referrer_id: Optional[int] = None, source: Optional[str] = None) -> Optional[Tuple[int, int, int, str, bool]]:

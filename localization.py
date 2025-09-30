@@ -11,6 +11,6 @@ def load_translations():
             translations[lang] = json.load(f)
 
 def get_translation(lang_code: str, key: str) -> str:
-    return translations.get(lang_code, translations["en"]).get(key, key)
+    return translations.get(lang_code, translations["ru"]).get(key, key)
 
 load_translations()

@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from telegram import Update, Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler
 import asyncio
+import telegram.error
 
 from conversation import get_conv_handler
 from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, export_users_command
@@ -65,14 +66,27 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         topup_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
         ])
-        await bot.send_message(
-            chat_id,
-            f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
-            f"недостаточно средств для создания {shorts_to_generate} видео. "
-            f"Пожалуйста, пополните баланс.",
-            reply_to_message_id=status_message_id,
-            reply_markup=topup_keyboard
-        )
+        try:
+            await bot.send_message(
+                chat_id,
+                f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
+                f"недостаточно средств для создания {shorts_to_generate} видео. "
+                f"Пожалуйста, пополните баланс.",
+                reply_to_message_id=status_message_id,
+                reply_markup=topup_keyboard
+            )
+        except telegram.error.BadRequest as e:
+            if 'Message to be replied not found' in str(e):
+                logger.warning(f"Original message not found for chat_id {chat_id}. Sending without reply.")
+                await bot.send_message(
+                    chat_id,
+                    f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
+                    f"недостаточно средств для создания {shorts_to_generate} видео. "
+                    f"Пожалуйста, пополните баланс.",
+                    reply_markup=topup_keyboard
+                )
+            else:
+                raise
         return
 
     # Проверяем, если баланс нулевой (даже для режима 'авто')
@@ -81,13 +95,25 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         topup_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
         ])
-        await bot.send_message(
-            chat_id,
-            f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
-            f"Пожалуйста, пополните баланс.",
-            reply_to_message_id=status_message_id,
-            reply_markup=topup_keyboard
-        )
+        try:
+            await bot.send_message(
+                chat_id,
+                f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
+                f"Пожалуйста, пополните баланс.",
+                reply_to_message_id=status_message_id,
+                reply_markup=topup_keyboard
+            )
+        except telegram.error.BadRequest as e:
+            if 'Message to be replied not found' in str(e):
+                logger.warning(f"Original message not found for chat_id {chat_id}. Sending without reply.")
+                await bot.send_message(
+                    chat_id,
+                    f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
+                    f"Пожалуйста, пополните баланс.",
+                    reply_markup=topup_keyboard
+                )
+            else:
+                raise
         return
 
     try:
@@ -195,23 +221,45 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             if extra_shorts_found > 0:
                 final_message += f"\n\nℹ️ Найдено еще {extra_shorts_found} подходящих фрагментов, но на них не хватило баланса."
 
-            await bot.send_message(
-                chat_id=chat_id,
-                text=final_message,
-                parse_mode="HTML",
-                reply_to_message_id=status_message_id
-            )
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=final_message,
+                    parse_mode="HTML",
+                    reply_to_message_id=status_message_id
+                )
+            except telegram.error.BadRequest as e:
+                if 'Message to be replied not found' in str(e):
+                    logger.warning(f"Original message not found for chat_id {chat_id}. Sending without reply.")
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=final_message,
+                        parse_mode="HTML"
+                    )
+                else:
+                    raise
 
             # Ask for rating
             rating_keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(str(i), callback_data=f'rate_{i}') for i in range(1, 6)]
             ])
-            await bot.send_message(
-                chat_id=chat_id,
-                text="Оцените результат от 1 до 5",
-                reply_markup=rating_keyboard,
-                reply_to_message_id=status_message_id
-            )
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text="Оцените результат от 1 до 5",
+                    reply_markup=rating_keyboard,
+                    reply_to_message_id=status_message_id
+                )
+            except telegram.error.BadRequest as e:
+                if 'Message to be replied not found' in str(e):
+                    logger.warning(f"Original message not found for chat_id {chat_id}. Sending without reply.")
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text="Оцените результат от 1 до 5",
+                        reply_markup=rating_keyboard
+                    )
+                else:
+                    raise
         else:
             log_event(chat_id, 'generation_error', {
                 'url': user_data['url'], 

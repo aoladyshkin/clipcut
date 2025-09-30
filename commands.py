@@ -116,7 +116,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await message.reply_text(
-        get_translation(lang, "start_message"),
+        get_translation(lang, "start_message") + ("\n\n<b>Switch language – /lang</b>" if is_new else ""),
         reply_markup=reply_markup,
         parse_mode="HTML"
     )

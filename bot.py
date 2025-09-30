@@ -1,16 +1,20 @@
 import os
 import logging
-from dotenv import load_dotenv
+
 from telegram import Update, Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler
 import asyncio
+import telegram.error
 
 from conversation import get_conv_handler
-from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, export_users_command
+from commands import menu_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, export_users_command, lang_command, set_language
 from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
-from states import RATING
+from states import RATING, GET_LANGUAGE
 from analytics import init_analytics_db, log_event
+from config import TELEGRAM_BOT_TOKEN, MAX_CONCURRENT_TASKS, FORWARD_RESULTS_GROUP_ID, DELETE_OUTPUT_AFTER_SENDING
+from localization import get_translation
+from database import get_user
 
 # Настройка логирования
 logging.basicConfig(
@@ -18,7 +22,72 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+async def send_message_safely(bot: Bot, chat_id: int, text: str, **kwargs):
+    try:
+        return await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+    except telegram.error.BadRequest as e:
+        if "Message to be replied not found" in str(e):
+            logger.warning(f"Original message not found for chat_id {chat_id}. Sending without reply.")
+            kwargs.pop("reply_to_message_id", None)
+            return await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+        else:
+            raise
+
+async def send_status_update(bot: Bot, chat_id: int, text: str, status_message_id: int, edit_message_id: int):
+    try:
+        await bot.send_message(
+            text=text,
+            chat_id=chat_id,
+            reply_to_message_id=status_message_id,
+        )
+    except Exception as e:
+        logger.warning(f"Не удалось отредактировать сообщение о статусе: {e}. Отправляю новое.")
+        await bot.send_message(chat_id=chat_id, text=text, reply_to_message_id=edit_message_id)
+
+async def send_video(bot: Bot, chat_id: int, file_path: str, caption: str, edit_message_id: int, forward_group_id: str = None, generation_id: str = None):
+    try:
+        with open(file_path, 'rb') as video_file:
+            message = await bot.send_video(
+                chat_id=chat_id,
+                video=video_file,
+                caption=caption,
+                parse_mode="HTML",
+                width=720,
+                height=1280,
+                supports_streaming=True,
+                read_timeout=600,
+                write_timeout=600,
+                reply_to_message_id=edit_message_id
+            )
+
+        if forward_group_id:
+            try:
+                fwd_message = await bot.forward_message(
+                    chat_id=forward_group_id,
+                    from_chat_id=message.chat.id,
+                    message_id=message.message_id
+                )
+                logger.info(f"Видео для чата {chat_id} переслано в группу {forward_group_id}")
+
+                if generation_id:
+                    await bot.send_message(
+                        chat_id=forward_group_id,
+                        text=f"Generation ID: `{generation_id}`\nChat ID: `{chat_id}`",
+                        reply_to_message_id=fwd_message.message_id,
+                        parse_mode="Markdown"
+                    )
+            except Exception as e:
+                logger.error(f"Не удалось переслать видео или отправить generation_id в группу {forward_group_id}: {e}")
+
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
+        log_event(chat_id, 'send_video_error', {'file_path': file_path, 'error': str(e)})
+        _, _, _, lang, _ = get_user(chat_id)
+        await bot.send_message(chat_id, get_translation(lang, "send_video_error").format(file_path=file_path, e=e), reply_to_message_id=edit_message_id)
+        return False
+
+
 
 async def processing_worker(queue: asyncio.Queue, application: Application):
     """Воркер, который обрабатывает видео из очереди."""
@@ -34,9 +103,10 @@ async def processing_worker(queue: asyncio.Queue, application: Application):
         except Exception as e:
             logger.error(f"Ошибка в воркере для чата {chat_id}: {e}", exc_info=True)
             try:
+                _, _, _, lang, _ = get_user(chat_id)
                 await application.bot.send_message(
                     chat_id,
-                    f"Произошла ошибка во время обработки вашего видео:\n\n> {e}",
+                    get_translation(lang, "processing_error").format(e=e),
                     parse_mode="HTML"
                 )
             except Exception as send_e:
@@ -55,126 +125,65 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
     log_event(chat_id, 'generation_start', {'generation_id': generation_id})
 
     # --- Проверка баланса перед началом обработки ---
-    _, current_balance, _, _ = get_user(chat_id)
+    _, current_balance, _, lang, _ = get_user(chat_id)
     shorts_to_generate = user_data.get('config', {}).get('shorts_number')
 
-    # Проверяем, если указано конкретное число шортсов
-    if isinstance(shorts_to_generate, int) and current_balance < shorts_to_generate:
-        logger.warning(f"Отмена задачи для чата {chat_id}: недостаточный баланс. "
-                       f"Требуется: {shorts_to_generate}, в наличии: {current_balance}")
-        topup_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
-        ])
-        await bot.send_message(
-            chat_id,
-            f"❌ Не удалось начать обработку видео: на вашем балансе ({current_balance} шортсов) "
-            f"недостаточно средств для создания {shorts_to_generate} видео. "
-            f"Пожалуйста, пополните баланс.",
-            reply_to_message_id=status_message_id,
-            reply_markup=topup_keyboard
-        )
-        return
-
-    # Проверяем, если баланс нулевой (даже для режима 'авто')
+    error_message = None
     if current_balance <= 0:
-        logger.warning(f"Отмена задачи для чата {chat_id}: нулевой баланс.")
+        error_message = get_translation(lang, "zero_balance")
+    elif isinstance(shorts_to_generate, int) and current_balance < shorts_to_generate:
+        error_message = get_translation(lang, "insufficient_balance").format(current_balance=current_balance, shorts_to_generate=shorts_to_generate)
+
+    if error_message:
+        logger.warning(f"Отмена задачи для чата {chat_id}: {error_message}.")
         topup_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
         ])
-        await bot.send_message(
+        await send_message_safely(
+            bot,
             chat_id,
-            f"❌ Не удалось начать обработку видео: на вашем балансе 0 шортсов. "
-            f"Пожалуйста, пополните баланс.",
+            get_translation(lang, "processing_start_error").format(error_message=error_message),
             reply_to_message_id=status_message_id,
             reply_markup=topup_keyboard
         )
         return
 
-    try:
-        processing_message = await bot.send_message(
-            chat_id, 
-            "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время.",
-            reply_to_message_id=status_message_id
-        )
-        edit_message_id = processing_message.message_id
-    except Exception:
-        processing_message = await bot.send_message(
-            chat_id, 
-            "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время."
-        )
-        edit_message_id = processing_message.message_id
+    processing_message = await send_message_safely(
+        bot,
+        chat_id,
+        get_translation(lang, "processing_started"),
+        reply_to_message_id=status_message_id
+    )
+    edit_message_id = processing_message.message_id if processing_message else None
 
     main_loop = asyncio.get_running_loop()
 
-    async def send_status_update_async(status_text: str):
-        try:
-            await bot.send_message(
-                text=status_text,
-                chat_id=chat_id,
-                reply_to_message_id=status_message_id,
-            )
-        except Exception as e:
-            logger.warning(f"Не удалось отредактировать сообщение о статусе: {e}. Отправляю новое.")
-            await bot.send_message(chat_id=chat_id, text=status_text, reply_to_message_id=edit_message_id)
-
-    def send_status_update(status_text: str):
-        asyncio.run_coroutine_threadsafe(send_status_update_async(status_text), main_loop)
-
-    async def send_video_async(file_path, hook, start, end):
-        caption = f"<b>Hook</b>: {hook}\n\n<b>Таймкоды</b>: {start[:-2]} – {end[:-2]}"
-        try:
-            with open(file_path, 'rb') as video_file:
-                message = await bot.send_video(
-                    chat_id=chat_id,
-                    video=video_file,
-                    caption=caption,
-                    parse_mode="HTML",
-                    width=720,
-                    height=1280,
-                    supports_streaming=True,
-                    read_timeout=600,
-                    write_timeout=600,
-                    reply_to_message_id=edit_message_id
-                )
-
-            forward_group_id = os.environ.get("FORWARD_RESULTS_GROUP_ID")
-            if forward_group_id:
-                try:
-                    fwd_message = await bot.forward_message(
-                        chat_id=forward_group_id,
-                        from_chat_id=message.chat_id,
-                        message_id=message.message_id
-                    )
-                    logger.info(f"Видео для чата {chat_id} переслано в группу {forward_group_id}")
-
-                    if generation_id:
-                        await bot.send_message(
-                            chat_id=forward_group_id,
-                            text=f"Generation ID: `{generation_id}`\nChat ID: `{chat_id}`",
-                            reply_to_message_id=fwd_message.message_id,
-                            parse_mode="Markdown"
-                        )
-                except Exception as e:
-                    logger.error(f"Не удалось переслать видео или отправить generation_id в группу {forward_group_id}: {e}")
-
-            return True
-        except Exception as e:
-            logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
-            log_event(chat_id, 'send_video_error', {'file_path': file_path, 'error': str(e)})
-            await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}", reply_to_message_id=edit_message_id)
-            return False
+    def status_callback(status_text: str):
+        asyncio.run_coroutine_threadsafe(send_status_update(bot, chat_id, status_text, status_message_id, edit_message_id), main_loop)
 
     def send_video_callback(file_path, hook, start, end):
-        return asyncio.run_coroutine_threadsafe(send_video_async(file_path, hook, start, end), main_loop)
+        caption = get_translation(lang, "video_caption").format(hook=hook, start=start[:-2], end=end[:-2])
+        return asyncio.run_coroutine_threadsafe(
+            send_video(
+                bot,
+                chat_id,
+                file_path,
+                caption,
+                edit_message_id,
+                FORWARD_RESULTS_GROUP_ID,
+                generation_id,
+            ),
+            main_loop,
+        )
 
     try:
-        delete_output = os.environ.get("DELETE_OUTPUT_AFTER_SENDING", "false").lower() == "true"
+        delete_output = DELETE_OUTPUT_AFTER_SENDING
         
         shorts_generated_count, extra_shorts_found = await asyncio.to_thread(
             process_video,
             user_data['url'],
             user_data['config'],
-            send_status_update,
+            status_callback,
             send_video_callback,
             delete_output,
             user_balance=current_balance
@@ -184,18 +193,19 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             from database import update_user_balance, get_user
             update_user_balance(chat_id, shorts_generated_count)
             logger.info(f"Баланс пользователя {chat_id} обновлен. Списано {shorts_generated_count} шортсов.")
-            _, new_balance, _, _ = get_user(chat_id)
+            _, new_balance, _, lang, _ = get_user(chat_id)
             log_event(chat_id, 'generation_success', {
                 'url': user_data['url'],
                 'generated_count': shorts_generated_count,
                 'generation_id': generation_id
             })
             
-            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.\nПополнить баланс – /topup"
+            final_message = get_translation(lang, "processing_complete").format(new_balance=new_balance)
             if extra_shorts_found > 0:
-                final_message += f"\n\nℹ️ Найдено еще {extra_shorts_found} подходящих фрагментов, но на них не хватило баланса."
+                final_message += get_translation(lang, "extra_shorts_found").format(extra_shorts_found=extra_shorts_found)
 
-            await bot.send_message(
+            await send_message_safely(
+                bot,
                 chat_id=chat_id,
                 text=final_message,
                 parse_mode="HTML",
@@ -206,9 +216,10 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             rating_keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(str(i), callback_data=f'rate_{i}') for i in range(1, 6)]
             ])
-            await bot.send_message(
+            await send_message_safely(
+                bot,
                 chat_id=chat_id,
-                text="Оцените результат от 1 до 5",
+                text=get_translation(lang, "rate_results_prompt"),
                 reply_markup=rating_keyboard,
                 reply_to_message_id=status_message_id
             )
@@ -221,7 +232,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             })
             await bot.send_message(
                 chat_id=chat_id,
-                text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился.",
+                text=get_translation(lang, "no_shorts_generated"),
                 parse_mode="HTML",
                 reply_to_message_id=edit_message_id
             )
@@ -237,7 +248,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         })
         await bot.send_message(
             chat_id=chat_id,
-            text=f"Произошла критическая ошибка во время обработки видео: {e}",
+            text=get_translation(lang, "critical_processing_error").format(e=e),
             reply_to_message_id=edit_message_id
         )
 
@@ -248,11 +259,7 @@ async def post_init_hook(application: Application):
     application.bot_data['processing_queue'] = processing_queue
 
     # Запускаем воркеры в зависимости от MAX_CONCURRENT_TASKS
-    try:
-        max_concurrent_tasks = int(os.environ.get("MAX_CONCURRENT_TASKS", "1"))
-    except ValueError:
-        max_concurrent_tasks = 1
-        logger.warning("Неверное значение для MAX_CONCURRENT_TASKS, используется значение по умолчанию: 1")
+    max_concurrent_tasks = MAX_CONCURRENT_TASKS
 
     for i in range(max_concurrent_tasks):
         asyncio.create_task(processing_worker(processing_queue, application))
@@ -265,7 +272,7 @@ async def post_init_hook(application: Application):
 
 def main():
     """Основная функция для запуска бота."""
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    token = TELEGRAM_BOT_TOKEN
     if not token:
         logger.critical("Ошибка: Токен бота не найден. Установите переменную окружения TELEGRAM_BOT_TOKEN.")
         return
@@ -274,9 +281,10 @@ def main():
 
     conv_handler = get_conv_handler()
 
-    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(CommandHandler("referral", referral_command))
+    application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("addshorts", add_shorts_command))
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
@@ -286,6 +294,7 @@ def main():
     application.add_handler(CommandHandler("export_users", export_users_command))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
+    application.add_handler(CallbackQueryHandler(set_language, pattern='^set_lang_'))
 
     logger.info("Бот запущен и готов к работе...")
     application.run_polling()

@@ -2,7 +2,8 @@ import asyncio
 import os
 import logging
 from telegram.error import Forbidden
-from config import DEMO_CONFIG
+from pricing import DEMO_CONFIG
+from config import DEMO_SHORTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ async def simulate_demo_processing(context, chat_id, status_message_id):
             except Exception as e:
                 logger.warning(f"Could not send message for demo status: {e}")
 
-        demo_shorts_dir = './demo_shorts'
+        demo_shorts_dir = DEMO_SHORTS_DIR
         if not os.path.exists(demo_shorts_dir) or not os.path.isdir(demo_shorts_dir):
             await context.bot.send_message(chat_id=chat_id, text="Ошибка: Директория с демо-видео не найдена.")
             logger.error(f"Demo shorts directory not found at: {demo_shorts_dir}")

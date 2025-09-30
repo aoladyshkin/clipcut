@@ -35,6 +35,7 @@ from .face_tracker import create_face_tracked_clip
 from .layouts import _build_video_canvas
 from .gpt import get_highlights_from_gpt
 from utils import to_seconds
+from localization import get_translation
 
 
 
@@ -62,16 +63,16 @@ def temporary_directory(delete: bool = True):
             shutil.rmtree(temp_dir)
             print(f"🗑️ Папка {temp_dir} удалена.")
 
-def download_media(url: str, out_dir: Path, audio_lang: str):
+def download_media(url: str, out_dir: Path, audio_lang: str, lang: str):
     print("Скачиваем видео с YouTube...")
     try:
         video_only = download_video_only(url, out_dir / "video_only.mp4")
         audio_only = download_audio_only(url, out_dir / "audio_only.ogg", lang=audio_lang)
     except Exception as e:
-        raise Exception("Произошла ошибка при скачивании видео – мы уже о ней знаем и совсем скоро всё починим!") from e
+        raise Exception(get_translation(lang, "download_error")) from e
 
     if not video_only or not audio_only:
-        raise Exception("Произошла ошибка при скачивании видео – мы уже о ней знаем и совсем скоро всё починим!")
+        raise Exception(get_translation(lang, "download_error"))
 
     video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
     return video_full, audio_only
@@ -112,14 +113,15 @@ def create_clips(config, video_full, audio_only, shorts_to_process, transcript_s
 def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False, user_balance: int = None):
 
     config['bottom_video_path'] = VIDEO_MAP.get(config['bottom_video'])
+    lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
         
         audio_lang = config.get('audio_lang', 'ru')
-        video_full, audio_only = download_media(url, out_dir, audio_lang)
+        video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
         if status_callback:
-            status_callback("🔍 Анализируем видео...")
+            status_callback(get_translation(lang, "analyzing_video"))
         
         force_ai_transcription = config.get('force_ai_transcription', False)
         transcript_segments, lang_code = transcribe_audio(url, out_dir, audio_only, force_ai_transcription)
@@ -133,7 +135,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         
         if not shorts_timecodes:
             if status_callback:
-                status_callback("GPT не смог выделить подходящие отрезки для шортсов.")
+                status_callback(get_translation(lang, "gpt_highlights_error"))
             return 0, 0
 
         if user_balance is None:
@@ -144,7 +146,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         extra_found = len(shorts_timecodes) - num_to_process
 
         if status_callback:
-            status_callback(f"🔥 Найдены отрезки для шортсов - {len(shorts_timecodes)} шт. Создаем {num_to_process} коротких роликов...")
+            status_callback(get_translation(lang, "clips_found").format(shorts_timecodes_len=len(shorts_timecodes), num_to_process=num_to_process))
         print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
         successful_sends = create_clips(config, video_full, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)

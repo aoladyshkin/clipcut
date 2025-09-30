@@ -13,7 +13,8 @@ def initialize_database():
                 balance INTEGER NOT NULL DEFAULT 10,
                 generated_shorts_count INTEGER NOT NULL DEFAULT 0,
                 referred_by INTEGER,
-                source TEXT
+                source TEXT,
+                language TEXT DEFAULT 'ru'
             )
         """)
         # Check if the referred_by column exists, and add it if it doesn't
@@ -30,24 +31,43 @@ def initialize_database():
             cursor.execute("ALTER TABLE users ADD COLUMN source TEXT")
             conn.commit()
             print("Database schema updated: added 'source' column to 'users' table.")
+        # Check if the language column exists, and add it if it doesn't
+        try:
+            cursor.execute("SELECT language FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'")
+            conn.commit()
+            print("Database schema updated: added 'language' column to 'users' table.")
 
-def get_user(user_id: int, referrer_id: Optional[int] = None, source: Optional[str] = None) -> Optional[Tuple[int, int, int, bool]]:
+def get_user(user_id: int, referrer_id: Optional[int] = None, source: Optional[str] = None) -> Optional[Tuple[int, int, int, str, bool]]:
     """
     Получает данные пользователя по user_id.
     Если пользователь не найден, создает его с балансом по умолчанию.
-    Возвращает кортеж (user_id, balance, generated_shorts_count, is_new).
+    Возвращает кортеж (user_id, balance, generated_shorts_count, language, is_new).
     """
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, balance, generated_shorts_count FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT user_id, balance, generated_shorts_count, language FROM users WHERE user_id = ?", (user_id,))
         user = cursor.fetchone()
         if user is None:
             # Пользователь не найден, создаем нового
             cursor.execute("INSERT INTO users (user_id, referred_by, source) VALUES (?, ?, ?)", (user_id, referrer_id, source))
             conn.commit()
             # Возвращаем данные нового пользователя
-            return user_id, 10, 0, True
+            return user_id, 10, 0, 'ru', True
         return user + (False,)
+
+def set_user_language(user_id: int, language_code: str):
+    """
+    Устанавливает язык для пользователя.
+    """
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET language = ? WHERE user_id = ?",
+            (language_code, user_id)
+        )
+        conn.commit()
 
 def update_user_balance(user_id: int, shorts_generated: int):
     """

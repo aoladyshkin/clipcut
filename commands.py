@@ -4,11 +4,12 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
-from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user
+from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language
 from analytics import log_event
-from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE
 from config import TUTORIAL_LINK, ADMIN_USER_IDS
 from datetime import datetime, timezone
+from localization import get_translation
 
 import csv
 import io
@@ -46,7 +47,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             except IndexError:
                 source = None
 
-    _, balance, _, is_new = get_user(user_id, referrer_id=referrer_id, source=source)
+    _, balance, _, lang, is_new = get_user(user_id, referrer_id=referrer_id, source=source)
 
     if is_new:
         log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id, 'source': source})
@@ -58,26 +59,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             # Update local balance for the new user
             balance += 10
             
-            await update.message.reply_text("🎉 Добро пожаловать! Вы получили 10 бонусных шортсов за использование реферальной ссылки.")
+            await update.message.reply_text("🎉 Welcome! You have received 10 bonus shorts for using a referral link.")
             
             try:
                 # Try to get the new user's username to mention them
-                new_user_mention = f"@{update.effective_user.username}" if update.effective_user.username else f"пользователь {user_id}"
+                new_user_mention = f"@{update.effective_user.username}" if update.effective_user.username else f"user {user_id}"
                 await context.bot.send_message(
                     chat_id=referrer_id,
-                    text=f"🎉 Ваш друг {new_user_mention} присоединился по вашей ссылке! Вы получили 10 бонусных шортсов."
+                    text=f"🎉 Your friend {new_user_mention} joined using your link! You have received 10 bonus shorts."
                 )
             except Exception as e:
                 logger.error(f"Failed to send referral notification to {referrer_id}: {e}")
+        
+        keyboard = [
+            [InlineKeyboardButton("English", callback_data='set_lang_en')],
+            [InlineKeyboardButton("Русский", callback_data='set_lang_ru')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Please select your language:", reply_markup=reply_markup)
+        return GET_LANGUAGE
 
     # Set commands for the user
     base_commands = [
-        BotCommand(command="start", description="Сгенерировать ролики"),
-        BotCommand(command="help", description="Помощь и описание"),
-        BotCommand(command="balance", description="Показать баланс"),
-        BotCommand(command="topup", description="Пополнить баланс"),
-        BotCommand(command="referral", description="Пригласить друга"),
-        BotCommand(command="feedback", description="Оставить отзыв"),
+        BotCommand(command="start", description=get_translation(lang, "generate_video_button")),
+        BotCommand(command="menu", description=get_translation(lang, "help_description")),
+        BotCommand(command="balance", description=get_translation(lang, "balance_description")),
+        BotCommand(command="topup", description=get_translation(lang, "topup_description")),
+        BotCommand(command="referral", description=get_translation(lang, "referral_description")),
+        BotCommand(command="feedback", description=get_translation(lang, "feedback_description")),
+        BotCommand(command="lang", description=get_translation(lang, "language_description")),
     ]
     if is_admin(user_id):
         logger.info("User is an admin, adding admin commands.")
@@ -93,84 +103,98 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await context.bot.delete_my_commands(scope=BotCommandScopeChat(chat_id=user_id))
     await context.bot.set_my_commands(base_commands, scope=BotCommandScopeChat(chat_id=user_id))
 
-
-
     context.user_data.clear()
     context.user_data['config'] = {}
     context.user_data['balance'] = balance
     
     if is_new:
         keyboard = [
-            [InlineKeyboardButton("Попробовать на демо-видео", callback_data='start_demo')],
-            [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
+            [InlineKeyboardButton(get_translation(lang, "demo_button"), callback_data='start_demo')],
+            [InlineKeyboardButton(get_translation(lang, "how_it_works_button"), url=TUTORIAL_LINK)]
         ]
     else:
         keyboard = [
-            [InlineKeyboardButton("Как это работает", url=TUTORIAL_LINK)]
+            [InlineKeyboardButton(get_translation(lang, "how_it_works_button"), url=TUTORIAL_LINK)]
         ]
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"Привет!\nПришлите мне ссылку на YouTube видео, и я сделаю из него короткие виральные ролики для YT Shorts/Reels/Tiktok ⚡️", # \n\nВаш баланс: {balance} шортсов.
+        get_translation(lang, "start_message"),
         reply_markup=reply_markup,
         parse_mode="HTML"
     )
     return GET_URL
 
+async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Shows language selection."""
+    keyboard = [
+        [InlineKeyboardButton("English", callback_data='set_lang_en')],
+        [InlineKeyboardButton("Русский", callback_data='set_lang_ru')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Please select your language:", reply_markup=reply_markup)
+    return GET_LANGUAGE
+
+async def set_language(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Sets the user language."""
+    query = update.callback_query
+    await query.answer()
+    lang = query.data.split('_')[-1]
+    user_id = query.from_user.id
+    set_user_language(user_id, lang)
+    
+    await query.edit_message_text(get_translation(lang, "language_set"))
+    
+    # Restart the conversation to apply the new language
+    return await start(update, context)
+
 async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sends the user their referral link."""
     user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id)
     bot_username = context.bot.username
     referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     
     await update.message.reply_text(
-        "Пригласите друга и получите по 10 шортсов каждый!\n\n" 
-        "Отправьте эту ссылку другу:\n" 
-        f"`{referral_link}`",
+        get_translation(lang, "referral_message").format(referral_link=referral_link),
         parse_mode="Markdown"
     )
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет сообщение с помощью и списком команд."""
-    help_text = (
-        "Этот бот создает короткие вирусные видео из YouTube роликов.\n\n" 
-        "Доступные команды:\n"
-        "/start - Сгенерировать шортс\n"
-        "/help - Показать это сообщение\n"
-        "/balance - Показать текущий баланс\n"
-        "/topup - Пополнить баланс\n"
-        "/referral - Пригласить друга\n"
-        "/feedback - Оставить отзыв\n\n"
-        "@sf_tsupport_bot - по любым вопросам\n\n"
-        f"👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>"
-    )
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    help_text = get_translation(lang, "help_text").format(tutorial_link=TUTORIAL_LINK)
     reply_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Как сгенерировать шортсы (1м чтения)", url=TUTORIAL_LINK)]
+        [InlineKeyboardButton(get_translation(lang, "how_it_works_button"), url=TUTORIAL_LINK)]
     ])
     await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет текущий баланс пользователя."""
     user_id = update.effective_user.id
-    _, balance, _, _ = get_user(user_id)
-    await update.message.reply_text(f"Ваш баланс: {balance} шортсов 🎥\n\nПополнить баланс – /topup")
+    _, balance, _, lang, _ = get_user(user_id)
+    await update.message.reply_text(get_translation(lang, "balance_message").format(balance=balance))
 
 async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the top-up process."""
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id)
     keyboard = [
         [
             InlineKeyboardButton("⭐️ Telegram Stars", callback_data='topup_stars'),
             InlineKeyboardButton("💎 CryptoBot", callback_data='topup_crypto'),
         ],
-        [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
+        [InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='cancel_topup')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    message_text = get_translation(lang, "topup_prompt")
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text("💰 Выберите способ пополнения:", reply_markup=reply_markup)
+        await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup)
     else:
-        await update.message.reply_text("💰 Выберите способ пополнения:", reply_markup=reply_markup)
+        await update.message.reply_text(message_text, reply_markup=reply_markup)
     return GET_TOPUP_METHOD
 
 async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -188,7 +212,7 @@ async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
         add_to_user_balance(user_id, amount)
-        _, new_balance, _, _ = get_user(user_id)
+        _, new_balance, _, _, _ = get_user(user_id)
 
         await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} шортсов. Новый баланс: {new_balance}.")
 
@@ -209,7 +233,7 @@ async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
 
         add_to_user_balance(user_id, amount)
-        _, new_balance, _, _ = get_user(user_id)
+        _, new_balance, _, _, _ = get_user(user_id)
 
         await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} шортсов. Новый баланс: {new_balance}.")
 
@@ -360,10 +384,12 @@ async def broadcast_to_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Cancels and ends the current conversation."""
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id)
     context.user_data.clear()
     context.user_data['config'] = {}
     await update.message.reply_text(
-        "Действие отменено. Все команды – /help"
+        get_translation(lang, "action_cancelled")
     )
     return ConversationHandler.END
 
@@ -448,5 +474,7 @@ async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def start_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the feedback conversation."""
-    await update.message.reply_text("Отправьте текст вашего отзыва. Для отмены - /cancel")
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    await update.message.reply_text(get_translation(lang, "send_feedback_prompt"))
     return GET_FEEDBACK_TEXT

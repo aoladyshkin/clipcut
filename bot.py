@@ -7,12 +7,14 @@ import asyncio
 import telegram.error
 
 from conversation import get_conv_handler
-from commands import help_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, export_users_command
+from commands import menu_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, export_users_command, lang_command, set_language
 from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
-from states import RATING
+from states import RATING, GET_LANGUAGE
 from analytics import init_analytics_db, log_event
 from config import TELEGRAM_BOT_TOKEN, MAX_CONCURRENT_TASKS, FORWARD_RESULTS_GROUP_ID, DELETE_OUTPUT_AFTER_SENDING
+from localization import get_translation
+from database import get_user
 
 # Настройка логирования
 logging.basicConfig(
@@ -81,7 +83,8 @@ async def send_video(bot: Bot, chat_id: int, file_path: str, caption: str, edit_
     except Exception as e:
         logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")
         log_event(chat_id, 'send_video_error', {'file_path': file_path, 'error': str(e)})
-        await bot.send_message(chat_id, f"Не удалось отправить видео: {file_path}\n\nОшибка: {e}", reply_to_message_id=edit_message_id)
+        _, _, _, lang, _ = get_user(chat_id)
+        await bot.send_message(chat_id, get_translation(lang, "send_video_error").format(file_path=file_path, e=e), reply_to_message_id=edit_message_id)
         return False
 
 
@@ -100,9 +103,10 @@ async def processing_worker(queue: asyncio.Queue, application: Application):
         except Exception as e:
             logger.error(f"Ошибка в воркере для чата {chat_id}: {e}", exc_info=True)
             try:
+                _, _, _, lang, _ = get_user(chat_id)
                 await application.bot.send_message(
                     chat_id,
-                    f"Произошла ошибка во время обработки вашего видео:\n\n> {e}",
+                    get_translation(lang, "processing_error").format(e=e),
                     parse_mode="HTML"
                 )
             except Exception as send_e:
@@ -121,24 +125,24 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
     log_event(chat_id, 'generation_start', {'generation_id': generation_id})
 
     # --- Проверка баланса перед началом обработки ---
-    _, current_balance, _, _ = get_user(chat_id)
+    _, current_balance, _, lang, _ = get_user(chat_id)
     shorts_to_generate = user_data.get('config', {}).get('shorts_number')
 
     error_message = None
     if current_balance <= 0:
-        error_message = "на вашем балансе 0 шортсов"
+        error_message = get_translation(lang, "zero_balance")
     elif isinstance(shorts_to_generate, int) and current_balance < shorts_to_generate:
-        error_message = f"на вашем балансе ({current_balance} шортсов) недостаточно средств для создания {shorts_to_generate} видео"
+        error_message = get_translation(lang, "insufficient_balance").format(current_balance=current_balance, shorts_to_generate=shorts_to_generate)
 
     if error_message:
         logger.warning(f"Отмена задачи для чата {chat_id}: {error_message}.")
         topup_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
         ])
         await send_message_safely(
             bot,
             chat_id,
-            f"❌ Не удалось начать обработку видео: {error_message}. Пожалуйста, пополните баланс.",
+            get_translation(lang, "processing_start_error").format(error_message=error_message),
             reply_to_message_id=status_message_id,
             reply_markup=topup_keyboard
         )
@@ -147,7 +151,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
     processing_message = await send_message_safely(
         bot,
         chat_id,
-        "⚡ Ваш запрос взят в работу. Начинем скачивание и обработку видео... Это может занять некоторое время.",
+        get_translation(lang, "processing_started"),
         reply_to_message_id=status_message_id
     )
     edit_message_id = processing_message.message_id if processing_message else None
@@ -158,7 +162,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         asyncio.run_coroutine_threadsafe(send_status_update(bot, chat_id, status_text, status_message_id, edit_message_id), main_loop)
 
     def send_video_callback(file_path, hook, start, end):
-        caption = f"<b>Hook</b>: {hook}\n\n<b>Таймкоды</b>: {start[:-2]} – {end[:-2]}"
+        caption = get_translation(lang, "video_caption").format(hook=hook, start=start[:-2], end=end[:-2])
         return asyncio.run_coroutine_threadsafe(
             send_video(
                 bot,
@@ -189,16 +193,16 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             from database import update_user_balance, get_user
             update_user_balance(chat_id, shorts_generated_count)
             logger.info(f"Баланс пользователя {chat_id} обновлен. Списано {shorts_generated_count} шортсов.")
-            _, new_balance, _, _ = get_user(chat_id)
+            _, new_balance, _, lang, _ = get_user(chat_id)
             log_event(chat_id, 'generation_success', {
                 'url': user_data['url'],
                 'generated_count': shorts_generated_count,
                 'generation_id': generation_id
             })
             
-            final_message = f"✅ <b>Обработка завершена!</b>\n\nВаш новый баланс: {new_balance} шортсов.\nПополнить баланс – /topup"
+            final_message = get_translation(lang, "processing_complete").format(new_balance=new_balance)
             if extra_shorts_found > 0:
-                final_message += f"\n\nℹ️ Найдено еще {extra_shorts_found} подходящих фрагментов, но на них не хватило баланса."
+                final_message += get_translation(lang, "extra_shorts_found").format(extra_shorts_found=extra_shorts_found)
 
             await send_message_safely(
                 bot,
@@ -215,7 +219,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             await send_message_safely(
                 bot,
                 chat_id=chat_id,
-                text="Оцените результат от 1 до 5",
+                text=get_translation(lang, "rate_results_prompt"),
                 reply_markup=rating_keyboard,
                 reply_to_message_id=status_message_id
             )
@@ -228,7 +232,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             })
             await bot.send_message(
                 chat_id=chat_id,
-                text="<b>Обработка завершена</b>, но не было создано ни одного шортса.\n\nВаш баланс не изменился.",
+                text=get_translation(lang, "no_shorts_generated"),
                 parse_mode="HTML",
                 reply_to_message_id=edit_message_id
             )
@@ -244,7 +248,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         })
         await bot.send_message(
             chat_id=chat_id,
-            text=f"Произошла критическая ошибка во время обработки видео: {e}",
+            text=get_translation(lang, "critical_processing_error").format(e=e),
             reply_to_message_id=edit_message_id
         )
 
@@ -277,9 +281,10 @@ def main():
 
     conv_handler = get_conv_handler()
 
-    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(CommandHandler("referral", referral_command))
+    application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(conv_handler)
     application.add_handler(CommandHandler("addshorts", add_shorts_command))
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
@@ -289,6 +294,7 @@ def main():
     application.add_handler(CommandHandler("export_users", export_users_command))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
+    application.add_handler(CallbackQueryHandler(set_language, pattern='^set_lang_'))
 
     logger.info("Бот запущен и готов к работе...")
     application.run_polling()

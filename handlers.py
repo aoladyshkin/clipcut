@@ -10,6 +10,7 @@ from processing.bot_logic import main as process_video
 from processing.download import check_video_availability
 from utils import format_config
 from analytics import log_event
+from localization import get_translation
 from states import (
     GET_URL,
     GET_SUBTITLE_STYLE,
@@ -39,6 +40,9 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the demo process by loading the demo config."""
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    context.user_data['lang'] = lang
 
     # Import utility function
     from utils import format_config
@@ -62,12 +66,12 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     log_event(query.from_user.id, 'demo_started', {'generation_id': context.user_data['generation_id']})
     logger.info(f"User {query.from_user.id} started a demo.")
 
-    settings_text = format_config(context.user_data['config'], balance, is_demo=True) 
+    settings_text = format_config(context.user_data['config'], balance, is_demo=True, lang=lang) 
 
     keyboard = [
         [
-            InlineKeyboardButton("✅ Подтвердить", callback_data='confirm_demo'),
-            InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
+            InlineKeyboardButton(get_translation(lang, "confirm_button_emoji"), callback_data='confirm_demo'),
+            InlineKeyboardButton(get_translation(lang, "reject_button_emoji"), callback_data='cancel'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -75,7 +79,7 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await query.message.delete()
     await context.bot.send_message(
         chat_id=query.message.chat_id,
-        text=f"<b>✨ Демонстрационный режим запущен!</b>\n\n🎬 Исходное видео: {context.user_data['url']}\n{settings_text}",
+        text=get_translation(lang, "demo_mode_started").format(url=context.user_data['url'], settings_text=settings_text),
         reply_markup=reply_markup,
         parse_mode="HTML",
         disable_web_page_preview=True
@@ -84,14 +88,18 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return CONFIRM_CONFIG
 
 async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет URL и запрашивает количество шортсов."""
-    balance = context.user_data.get('balance', 0)
+    """Saves the URL and prompts for the number of shorts."""
+    user_id = update.effective_user.id
+    _, balance, _, lang, _ = get_user(user_id)
+    context.user_data['balance'] = balance
+    context.user_data['lang'] = lang
+
     if balance <= 0:
         topup_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
         ])
         await update.message.reply_text(
-            "У вас закончились шортсы. Пожалуйста, пополните баланс.",
+            get_translation(lang, "out_of_shorts"),
             reply_markup=topup_keyboard
         )
         return ConversationHandler.END
@@ -102,11 +110,11 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     log_event(update.effective_user.id, 'config_video_url_provided', {'url': url, 'generation_id': generation_id})
 
     if "youtube.com/" not in url and "youtu.be/" not in url:
-        await update.message.reply_text("Пожалуйста, пришлите корректную ссылку на YouTube видео.")
+        await update.message.reply_text(get_translation(lang, "send_correct_youtube_link"))
         return GET_URL
 
-    # Проверяем доступность видео
-    is_available, message, err = check_video_availability(url)
+    # Check video availability
+    is_available, message, err = check_video_availability(url, lang)
     if not is_available:
         await update.message.reply_text(message)
         log_event(
@@ -117,18 +125,19 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return GET_URL
 
     context.user_data['url'] = url
-    logger.info(f"Пользователь {update.effective_user.id} предоставил URL: {url}")
+    logger.info(f"User {update.effective_user.id} provided URL: {url}")
 
     # Set default transcription method
+    context.user_data['config'] = {}
     context.user_data['config']['force_ai_transcription'] = False
     logger.info(f"Config for {update.effective_user.id}: force_ai_transcription = False (default)")
 
     keyboard = [
-        [InlineKeyboardButton("Авто", callback_data='auto')]
+        [InlineKeyboardButton(get_translation(lang, "auto_button"), callback_data='auto')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     message = await update.message.reply_text(
-        "Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
+        get_translation(lang, "how_many_shorts_prompt"),
         reply_markup=reply_markup
     )
     context.user_data['shorts_number_message_id'] = message.message_id
@@ -136,9 +145,10 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет 'Авто' для количества шортсов и запрашивает сетку."""
+    """Saves 'Auto' for the number of shorts and prompts for the layout."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
     context.user_data['config']['shorts_number'] = 'auto'
     generation_id = context.user_data.get('generation_id')
     log_event(query.from_user.id, 'config_step_shorts_number_selected', {'choice': 'auto', 'generation_id': generation_id})
@@ -161,14 +171,15 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
     await query.message.delete()
     await context.bot.send_photo(
         photo=open(CONFIG_EXAMPLES_DIR / 'layout_examples.png', 'rb'),
-        caption="Выберите сетку шортса:",
+        caption=get_translation(lang, "choose_layout_prompt"),
         reply_markup=reply_markup
     )
     return GET_LAYOUT
 
 
 async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет число шортсов и запрашивает сетку."""
+    """Saves the number of shorts and prompts for the layout."""
+    lang = context.user_data.get('lang', 'en')
     
     # Delete the bot's prompt message
     if 'shorts_number_message_id' in context.user_data:
@@ -191,11 +202,11 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             logger.info(f"Could not delete error_message_id: {e}")
 
     async def resend_prompt(context):
-        keyboard = [[InlineKeyboardButton("Авто", callback_data='auto')]]
+        keyboard = [[InlineKeyboardButton(get_translation(lang, "auto_button"), callback_data='auto')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Сколько шортсов мне нужно сделать? Отправьте число или нажмите \"Авто\"",
+            text=get_translation(lang, "how_many_shorts_prompt"),
             reply_markup=reply_markup
         )
         context.user_data['shorts_number_message_id'] = message.message_id
@@ -205,18 +216,18 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
         balance = context.user_data.get('balance', 0)
 
         if number <= 0:
-            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="Пожалуйста, введите положительное число.")
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=get_translation(lang, "enter_positive_number"))
             context.user_data['error_message_id'] = msg.message_id
             await resend_prompt(context)
             return GET_SHORTS_NUMBER
         
         if number > balance:
             topup_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+                [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
             ])
             msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id, 
-                text=f"У вас на балансе {balance} шортсов. Пожалуйста, введите число не больше {balance}.",
+                text=get_translation(lang, "balance_is_not_enough_for_n").format(balance=balance),
                 reply_markup=topup_keyboard
             )
             context.user_data['error_message_id'] = msg.message_id
@@ -245,20 +256,21 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
         await context.bot.send_photo(
             chat_id=update.effective_chat.id,
             photo=open(CONFIG_EXAMPLES_DIR / 'layout_examples.png', 'rb'),
-            caption="Выберите сетку шортса:",
+            caption=get_translation(lang, "choose_layout_prompt"),
             reply_markup=reply_markup
         )
         return GET_LAYOUT
     except ValueError:
-        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text="Пожалуйста, введите целое число или нажмите кнопку 'Авто'.")
+        msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=get_translation(lang, "enter_integer_or_auto"))
         context.user_data['error_message_id'] = msg.message_id
         await resend_prompt(context)
         return GET_SHORTS_NUMBER
 
 async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет стиль субтитров и показывает экран подтверждения."""
+    """Saves the subtitle style and shows the confirmation screen."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
     context.user_data['config']['subtitle_style'] = query.data
     generation_id = context.user_data.get('generation_id')
     log_event(query.from_user.id, 'config_step_subtitle_style_selected', {'choice': query.data, 'generation_id': generation_id})
@@ -269,12 +281,12 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     logger.info(f"Config for {query.from_user.id}: capitalize_sentences = False (default)")
 
     balance = context.user_data.get('balance')
-    settings_text = format_config(context.user_data['config'], balance)
+    settings_text = format_config(context.user_data['config'], balance, lang=lang)
 
     keyboard = [
         [
-            InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
-            InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
+            InlineKeyboardButton(get_translation(lang, "confirm_button_emoji"), callback_data='confirm'),
+            InlineKeyboardButton(get_translation(lang, "reject_button_emoji"), callback_data='cancel'),
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -282,7 +294,7 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.message.delete()
     await context.bot.send_message(
         chat_id=query.message.chat_id,
-        text=f"Подтвердите настройки:\n\n{settings_text}",
+        text=get_translation(lang, "confirm_settings_prompt").format(settings_text=settings_text),
         reply_markup=reply_markup,
         parse_mode="HTML",
         disable_web_page_preview=True 
@@ -291,9 +303,10 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return CONFIRM_CONFIG
 
 async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет фоновое видео и запрашивает тип субтитров."""
+    """Saves the background video and prompts for the subtitle type."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
     choice = query.data if query.data != 'none' else None
     context.user_data['config']['bottom_video'] = choice
     generation_id = context.user_data.get('generation_id')
@@ -302,25 +315,26 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
     keyboard = [
         [
-            InlineKeyboardButton("Одно слово", callback_data='word-by-word'),
-            InlineKeyboardButton("Фраза", callback_data='phrases'),
+            InlineKeyboardButton(get_translation(lang, "subtitle_type_word"), callback_data='word-by-word'),
+            InlineKeyboardButton(get_translation(lang, "subtitle_type_phrase"), callback_data='phrases'),
         ],
-        [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
+        [InlineKeyboardButton(get_translation(lang, "no_subtitles_button"), callback_data='no_subtitles')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.delete()
     await context.bot.send_photo(
         chat_id=query.message.chat_id,
         photo=open(CONFIG_EXAMPLES_DIR / 'subs_examples.png', 'rb'),
-        caption="Выберите, как показывать субтитры:",
+        caption=get_translation(lang, "choose_subtitle_display_prompt"),
         reply_markup=reply_markup
     )
     return GET_SUBTITLES_TYPE
 
 async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет расположение и запрашивает фоновое видео (или пропускает)."""
+    """Saves the layout and prompts for the background video (or skips)."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
     layout_choice = query.data
     context.user_data['config']['layout'] = layout_choice
     generation_id = context.user_data.get('generation_id')
@@ -335,10 +349,10 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         
         keyboard = [
             [
-                InlineKeyboardButton("Одно слово", callback_data='word-by-word'),
-                InlineKeyboardButton("Фраза", callback_data='phrases'),
+                InlineKeyboardButton(get_translation(lang, "subtitle_type_word"), callback_data='word-by-word'),
+                InlineKeyboardButton(get_translation(lang, "subtitle_type_phrase"), callback_data='phrases'),
             ],
-            [InlineKeyboardButton("Без субтитров", callback_data='no_subtitles')]
+            [InlineKeyboardButton(get_translation(lang, "no_subtitles_button"), callback_data='no_subtitles')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -346,27 +360,27 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
                 photo=open(CONFIG_EXAMPLES_DIR / 'subs_examples.png', 'rb'),
-                caption="Выберите, как показывать субтитры:",
+                caption=get_translation(lang, "choose_subtitle_display_prompt"),
                 reply_markup=reply_markup
             )
         except TimedOut:
             logger.warning(f"Timeout error sending photo to {query.message.chat_id} in get_layout. Sending text fallback.")
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
-                text="Не удалось загрузить изображение. Выберите, как показывать субтитры:",
+                text=get_translation(lang, "image_load_failed_subs_prompt"),
                 reply_markup=reply_markup
             )
         except Exception as e:
             logger.error(f"Error sending photo in get_layout (if block): {e}", exc_info=True)
-            await context.bot.send_message(chat_id=query.message.chat_id, text="Произошла непредвиденная ошибка. Попробуйте начать заново: /start")
+            await context.bot.send_message(chat_id=query.message.chat_id, text=get_translation(lang, "unexpected_error_try_again"))
             return ConversationHandler.END
             
         return GET_SUBTITLES_TYPE
     else:
         keyboard = [
             [
-                InlineKeyboardButton("GTA", callback_data='gta'),
-                InlineKeyboardButton("Minecraft", callback_data='minecraft'),
+                InlineKeyboardButton(get_translation(lang, "gta_button"), callback_data='gta'),
+                InlineKeyboardButton(get_translation(lang, "minecraft_button"), callback_data='minecraft'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -375,27 +389,28 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
                 photo=open(CONFIG_EXAMPLES_DIR / 'brainrot_examples.png', 'rb'),
-                caption="Выберите brainrot видео:",
+                caption=get_translation(lang, "choose_brainrot_video_prompt"),
                 reply_markup=reply_markup
             )
         except TimedOut:
             logger.warning(f"Timeout error sending photo to {query.message.chat_id} in get_layout. Sending text fallback.")
             await context.bot.send_message(
                 chat_id=query.message.chat_id,
-                text="Не удалось загрузить изображение. Выберите brainrot видео:",
+                text=get_translation(lang, "image_load_failed_brainrot_prompt"),
                 reply_markup=reply_markup
             )
         except Exception as e:
             logger.error(f"Error sending photo in get_layout (else block): {e}", exc_info=True)
-            await context.bot.send_message(chat_id=query.message.chat_id, text="Произошла непредвиденная ошибка. Попробуйте начать заново: /start")
+            await context.bot.send_message(chat_id=query.message.chat_id, text=get_translation(lang, "unexpected_error_try_again"))
             return ConversationHandler.END
 
         return GET_BOTTOM_VIDEO
 
 async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Сохраняет тип субтитров и запрашивает стиль субтитров или подтверждение."""
+    """Saves the subtitle type and prompts for subtitle style or confirmation."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
     choice = query.data
     context.user_data['config']['subtitles_type'] = choice
     generation_id = context.user_data.get('generation_id')
@@ -407,12 +422,12 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logger.info(f"Config for {query.from_user.id}: subtitle_style = None")
         
         balance = context.user_data.get('balance')
-        settings_text = format_config(context.user_data['config'], balance)
+        settings_text = format_config(context.user_data['config'], balance, lang=lang)
 
         keyboard = [
             [
-                InlineKeyboardButton("✅ Подтвердить", callback_data='confirm'),
-                InlineKeyboardButton("❌ Отклонить", callback_data='cancel'),
+                InlineKeyboardButton(get_translation(lang, "confirm_button_emoji"), callback_data='confirm'),
+                InlineKeyboardButton(get_translation(lang, "reject_button_emoji"), callback_data='cancel'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -420,7 +435,7 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.message.delete()
         await context.bot.send_message(
             chat_id=query.message.chat_id,
-            text=f"<b>Подтвердите настройки:</b>\n\n{settings_text}",
+            text=get_translation(lang, "confirm_settings_prompt_html").format(settings_text=settings_text),
             reply_markup=reply_markup,
             parse_mode="HTML",
             disable_web_page_preview=True 
@@ -428,15 +443,15 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return CONFIRM_CONFIG
     else:
         keyboard = [
-            [InlineKeyboardButton("Белый", callback_data='white'), InlineKeyboardButton("Желтый", callback_data='yellow')],
-            [InlineKeyboardButton("Фиолетовый", callback_data='purple'), InlineKeyboardButton("Зелёный", callback_data='green')]
+            [InlineKeyboardButton(get_translation(lang, "white_color_button"), callback_data='white'), InlineKeyboardButton(get_translation(lang, "yellow_color_button"), callback_data='yellow')],
+            [InlineKeyboardButton(get_translation(lang, "purple_color_button"), callback_data='purple'), InlineKeyboardButton(get_translation(lang, "green_color_button"), callback_data='green')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.message.delete()
         await context.bot.send_photo(
             chat_id=query.message.chat_id,
             photo=open(CONFIG_EXAMPLES_DIR / 'subs_color_examples.png', 'rb'),
-            caption="Выберите цвет субтитров:",
+            caption=get_translation(lang, "choose_subtitle_color_prompt"),
             reply_markup=reply_markup
         )
         return GET_SUBTITLE_STYLE
@@ -445,9 +460,10 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Добавляет задачу в очередь после подтверждения."""
+    """Adds a task to the queue after confirmation."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
 
     balance = context.user_data.get('balance', 0)
     shorts_number = context.user_data.get('config', {}).get('shorts_number', 'auto')
@@ -455,17 +471,17 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if isinstance(shorts_number, int):
         if balance < shorts_number:
             topup_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
+                [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
             ])
             await query.edit_message_text(
-                f"На вашем балансе ({balance}) недостаточно шортсов для генерации {shorts_number} видео. Пожалуйста, пополните баланс или выберите меньшее количество.",
+                get_translation(lang, "insufficient_balance_for_generation").format(balance=balance, shorts_number=shorts_number),
                 reply_markup=topup_keyboard
             )
             return ConversationHandler.END
     elif shorts_number == 'auto':
-        # В режиме "авто" мы не знаем точное количество. 
-        # Можно либо списать максимум, либо проверять по факту.
-        # Пока что просто пропускаем, если баланс > 0, что уже проверено в start.
+        # In "auto" mode, we don't know the exact number.
+        # We could either charge the maximum or check later.
+        # For now, we just proceed if balance > 0, which is already checked in start.
         pass
 
     generation_id = context.user_data.get('generation_id')
@@ -487,12 +503,12 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     await processing_queue.put(task_data)
     
-    logger.info(f"Задача для чата {query.message.chat.id} добавлена в очередь. Задач в очереди: {processing_queue.qsize()}")
+    logger.info(f"Task for chat {query.message.chat.id} added to the queue. Tasks in queue: {processing_queue.qsize()}")
 
-    settings_text = format_config(context.user_data['config'], balance)
+    settings_text = format_config(context.user_data['config'], balance, lang=lang)
     url = context.user_data['url']
     await query.edit_message_text(
-        text=f"⏳ Ваш запрос добавлен в очередь (вы <b>#{processing_queue.qsize()} в очереди</b>). Вы получите уведомление, когда обработка начнется.\n\n<b>Ваши настройки:</b>\nURL: {url}\n{settings_text}",
+        text=get_translation(lang, "request_queued_message").format(queue_position=processing_queue.qsize(), url=url, settings_text=settings_text),
         parse_mode="HTML",
         disable_web_page_preview=True
     )
@@ -504,11 +520,12 @@ async def confirm_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Handles the confirmation of a demo generation."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
 
     generation_id = context.user_data.get('generation_id')
     log_event(query.from_user.id, 'demo_confirmed', {'generation_id': generation_id})
 
-    status_message = await query.edit_message_text(text="⚡ Ваш запрос взят в работу. Начинаем скачивание и обработку демо-видео...")
+    status_message = await query.edit_message_text(text=get_translation(lang, "demo_processing_started"))
     
     asyncio.create_task(simulate_demo_processing(
         context=context,
@@ -519,9 +536,11 @@ async def confirm_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return ConversationHandler.END
 
 async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Отменяет текущую конфигурацию и возвращает к началу."""
+    """Cancels the current configuration and returns to the start."""
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
 
     generation_id = context.user_data.get('generation_id')
     log_event(query.from_user.id, 'config_cancelled', {'generation_id': generation_id})
@@ -530,12 +549,11 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data['config'] = {}
 
     # Re-fetch balance
-    user_id = query.from_user.id
-    _, balance, _, _ = get_user(user_id)
+    _, balance, _, _, _ = get_user(user_id)
     context.user_data['balance'] = balance
     
     await query.edit_message_text(
-        f"Настройки отменены.\n📎 Отправь ссылку на видео — и через пару минут получишь готовые ролики для Shorts, Reels и TikTok."
+        get_translation(lang, "settings_cancelled_prompt")
     )
     return GET_URL
 
@@ -543,15 +561,17 @@ async def back_to_topup_method(update: Update, context: ContextTypes.DEFAULT_TYP
     """Goes back to the top-up method selection."""
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
     keyboard = [
         [
-            InlineKeyboardButton("⭐️ Telegram Stars", callback_data='topup_stars'),
-            InlineKeyboardButton("💎 CryptoBot", callback_data='topup_crypto'),
+            InlineKeyboardButton(get_translation(lang, "telegram_stars_button"), callback_data='topup_stars'),
+            InlineKeyboardButton(get_translation(lang, "cryptobot_button"), callback_data='topup_crypto'),
         ],
-        [InlineKeyboardButton("❌ Отмена", callback_data='cancel_topup')]
+        [InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='cancel_topup')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
+    await query.edit_message_text(get_translation(lang, "topup_prompt"), reply_markup=reply_markup)
     return GET_TOPUP_METHOD
 
 
@@ -559,6 +579,9 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     """Shows the available packages for Telegram Stars top-up."""
     query = update.callback_query
     await query.answer()
+    
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
 
     discount_active = context.bot_data.get('discount_active', False)
     discount_end_time = context.bot_data.get('discount_end_time')
@@ -567,25 +590,25 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     if discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time:
         packages = DISCOUNT_PRICES["stars_packages"]
         old_packages = REGULAR_PRICES["stars_packages"]
-        message_text = "⭐️ Выберите пакет для пополнения (действует скидка!):"
+        message_text = get_translation(lang, "topup_stars_discount_prompt")
         for i, new_package in enumerate(packages):
             old_price = old_packages[i]['stars']
             new_price = new_package['stars']
             shorts = new_package['shorts']
-            button_text = f"{shorts} шортсов: {old_price} → {new_price} ⭐️"
+            button_text = get_translation(lang, "n_shorts_discount_button").format(shorts=shorts, old_price=old_price, new_price=new_price)
             button = InlineKeyboardButton(button_text, callback_data=f'topup_{shorts}_{new_price}')
             keyboard.append([button])
     else:
         packages = REGULAR_PRICES["stars_packages"]
-        message_text = "Выберите пакет для пополнения через ⭐️ Telegram Stars:"
+        message_text = get_translation(lang, "topup_stars_prompt")
         for package in packages:
             shorts = package['shorts']
             stars = package['stars']
-            button = InlineKeyboardButton(f"{shorts} шортсов: {stars} ⭐️", callback_data=f'topup_{shorts}_{stars}')
+            button = InlineKeyboardButton(get_translation(lang, "n_shorts_button").format(shorts=shorts, stars=stars), callback_data=f'topup_{shorts}_{stars}')
             keyboard.append([button])
     
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')])
-    message_text += "\n\n(Прибрести Telegram Stars – @PremiumBot)"
+    keyboard.append([InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_topup_method')])
+    message_text += get_translation(lang, "buy_stars_prompt")
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(message_text, reply_markup=reply_markup)
     return GET_TOPUP_PACKAGE
@@ -596,16 +619,19 @@ async def send_invoice_for_stars(update: Update, context: ContextTypes.DEFAULT_T
     await query.answer()
     await query.delete_message()
     
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+
     package = query.data.split('_')
     shorts_amount = int(package[1])
     stars_amount = int(package[2])
     
     chat_id = update.effective_chat.id
-    title = f"Пополнение баланса на {shorts_amount} шортсов"
-    description = f"Пакет '{shorts_amount} шортсов' для генерации видео."
+    title = get_translation(lang, "topup_invoice_title").format(shorts_amount=shorts_amount)
+    description = get_translation(lang, "topup_invoice_description").format(shorts_amount=shorts_amount)
     payload = f"topup-{chat_id}-{shorts_amount}-{stars_amount}"
     currency = "XTR"
-    prices = [LabeledPrice(f"{shorts_amount} шортсов", stars_amount)]
+    prices = [LabeledPrice(get_translation(lang, "n_shorts").format(shorts_amount=shorts_amount), stars_amount)]
 
     await context.bot.send_invoice(
         chat_id=chat_id,
@@ -621,10 +647,12 @@ async def send_invoice_for_stars(update: Update, context: ContextTypes.DEFAULT_T
 async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
     """Answers the PreCheckoutQuery."""
     query = update.pre_checkout_query
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
     if query.invoice_payload.startswith('topup-'):
         await query.answer(ok=True)
     else:
-        await query.answer(ok=False, error_message="Что-то пошло не так...")
+        await query.answer(ok=False, error_message=get_translation(lang, "something_went_wrong"))
 
 async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
     """Confirms the successful payment."""
@@ -634,13 +662,13 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     shorts_amount = int(payload_parts[2])
 
     add_to_user_balance(user_id, shorts_amount)
-    _, new_balance, _, _ = get_user(user_id)
+    _, new_balance, _, lang, _ = get_user(user_id)
 
     log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'shorts_amount': shorts_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
 
     await context.bot.send_message(
         chat_id=user_id,
-        text=f"💸 Оплата прошла успешно!\nВаш баланс пополнен на {shorts_amount} шортс.\n\nНовый баланс: <b>{new_balance} шортс.</b>",
+        text=get_translation(lang, "payment_successful").format(shorts_amount=shorts_amount, new_balance=new_balance),
         parse_mode="HTML"
     )
 
@@ -648,14 +676,16 @@ async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Asks the user for the amount of shorts to buy with crypto."""
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
 
     keyboard = [
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')]
+        [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_topup_method')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        "Введите количество шортсов, которое вы хотите купить:",
+        get_translation(lang, "enter_shorts_amount_to_buy"),
         reply_markup=reply_markup
     )
     return GET_CRYPTO_AMOUNT
@@ -665,10 +695,12 @@ from aiocryptopay import AioCryptoPay, Networks
 
 async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the amount of shorts to buy with crypto."""
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id)
     try:
         amount = int(update.message.text)
         if amount <= 0:
-            await update.message.reply_text("Пожалуйста, введите положительное число.")
+            await update.message.reply_text(get_translation(lang, "enter_positive_number"))
             return GET_CRYPTO_AMOUNT
 
         discount_active = context.bot_data.get('discount_active', False)
@@ -693,6 +725,7 @@ async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         # --- CryptoBot Integration (Real) ---
         crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
+        invoice = await crypto.create_invoice(asset='USDT', amount=total_price)
         await crypto.close()
 
         payment_url = invoice.bot_invoice_url
@@ -701,31 +734,33 @@ async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         payload = f"check_crypto:{update.effective_user.id}:{amount}:{invoice_id}"
 
         keyboard = [
-            [InlineKeyboardButton("Оплатить", url=payment_url)],
-            [InlineKeyboardButton("Проверить платёж", callback_data=payload)],
-            [InlineKeyboardButton("❌ Отмена", callback_data='back_to_topup_method')]
+            [InlineKeyboardButton(get_translation(lang, "pay_button"), url=payment_url)],
+            [InlineKeyboardButton(get_translation(lang, "check_payment_button"), callback_data=payload)],
+            [InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='back_to_topup_method')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            f"Вы покупаете {amount} шортсов за {total_price} USDT. Нажмите кнопку ниже, чтобы оплатить.",
+            get_translation(lang, "you_are_buying_n_shorts_for_m_usdt").format(amount=amount, total_price=total_price),
             reply_markup=reply_markup
         )
         
         return CRYPTO_PAYMENT
 
     except ValueError:
-        await update.message.reply_text("Пожалуйста, введите целое число.")
+        await update.message.reply_text(get_translation(lang, "please_enter_integer"))
         return GET_CRYPTO_AMOUNT
 
 async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Checks the crypto payment and updates the balance."""
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
 
     try:
         identifier, user_id_str, amount_str, invoice_id = query.data.split(':')
-        user_id = int(user_id_str)
+        user_id_from_payload = int(user_id_str)
         amount = int(amount_str)
 
         try:
@@ -739,22 +774,22 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
                 if 'payment_not_found_messages' in context.user_data:
                     for message_id in context.user_data['payment_not_found_messages']:
                         try:
-                            await context.bot.delete_message(chat_id=user_id, message_id=message_id)
+                            await context.bot.delete_message(chat_id=user_id_from_payload, message_id=message_id)
                         except Exception as e:
                             logger.warning(f"Could not delete message {message_id}: {e}")
                     del context.user_data['payment_not_found_messages']
 
-                add_to_user_balance(user_id, amount)
-                _, new_balance, _, _ = get_user(user_id)
-                log_event(user_id, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
+                add_to_user_balance(user_id_from_payload, amount)
+                _, new_balance, _, _, _ = get_user(user_id_from_payload)
+                log_event(user_id_from_payload, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 
                 await query.edit_message_text(
-                    f"💸 Оплата прошла успешно!\nВаш баланс пополнен на {amount} шортсов.\n\nНовый баланс: <b>{new_balance} шортсов.</b>",
+                    get_translation(lang, "payment_successful_balance_updated").format(amount=amount, new_balance=new_balance),
                     parse_mode="HTML"
                 )
                 return ConversationHandler.END
             else:
-                msg = await context.bot.send_message(chat_id=user_id, text="Платёж не найден или еще не прошел. Попробуйте проверить еще раз через несколько секунд.")
+                msg = await context.bot.send_message(chat_id=user_id_from_payload, text=get_translation(lang, "payment_not_found_try_again"))
                 if 'payment_not_found_messages' not in context.user_data:
                     context.user_data['payment_not_found_messages'] = []
                 context.user_data['payment_not_found_messages'].append(msg.message_id)
@@ -762,12 +797,12 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 
         except Exception as e:
             logger.error(f"Error checking crypto payment with aiocryptopay: {e}", exc_info=True)
-            await query.edit_message_text("Произошла ошибка при связи с платежной системой. Пожалуйста, попробуйте еще раз позже.")
+            await query.edit_message_text(get_translation(lang, "payment_system_error"))
             return CRYPTO_PAYMENT
 
     except (ValueError, IndexError) as e:
         logger.error(f"Error checking crypto payment: {e}", exc_info=True)
-        await query.edit_message_text("Произошла ошибка при проверке платежа. Пожалуйста, попробуйте еще раз.")
+        await query.edit_message_text(get_translation(lang, "payment_check_error"))
         return CRYPTO_PAYMENT
 
 async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -781,6 +816,7 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     """Handles the user's rating and asks for text feedback."""
     query = update.callback_query
     await query.answer()
+    lang = context.user_data.get('lang', 'en')
     rating = query.data.split('_')[1]
     
     rating_id = str(uuid.uuid4())
@@ -790,11 +826,11 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data['rating_id'] = rating_id
     context.user_data['rating'] = rating
 
-    keyboard = [[InlineKeyboardButton("Пропустить", callback_data='skip_feedback')]]
+    keyboard = [[InlineKeyboardButton(get_translation(lang, "skip_button"), callback_data='skip_feedback')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        text="Спасибо за оценку! Оставьте, пожалуйста, текстовый отзыв, чтобы мы могли стать лучше.",
+        text=get_translation(lang, "thank_you_for_rating_leave_feedback"),
         reply_markup=reply_markup
     )
     return FEEDBACK
@@ -802,6 +838,7 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the user's text feedback and forwards it."""
     user_id = update.message.from_user.id
+    lang = context.user_data.get('lang', 'en')
     rating_id = context.user_data.get('rating_id')
     rating = context.user_data.get('rating')
 
@@ -818,18 +855,19 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if rating:
                 await context.bot.send_message(
                     chat_id=FEEDBACK_GROUP_ID,
-                    text=f"Пользователь {user_id} поставил оценку: {rating}"
+                    text=get_translation(lang, "user_rated").format(user_id=user_id, rating=rating)
                 )
         except Exception as e:
             logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
 
-    await update.message.reply_text("Спасибо за ваш отзыв!")
+    await update.message.reply_text(get_translation(lang, "thank_you_for_feedback"))
     context.user_data.clear()
     return ConversationHandler.END
 
 async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the user's text feedback and forwards it."""
     user_id = update.message.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
 
     if FEEDBACK_GROUP_ID:
         try:
@@ -840,18 +878,19 @@ async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             await context.bot.send_message(
                 chat_id=FEEDBACK_GROUP_ID,
-                text=f"Отзыв от пользователя {user_id}."
+                text=get_translation(lang, "feedback_from_user").format(user_id=user_id)
             )
         except Exception as e:
             logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
 
-    await update.message.reply_text("Спасибо за ваш отзыв!")
+    await update.message.reply_text(get_translation(lang, "thank_you_for_feedback"))
     return ConversationHandler.END
 
 async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Skips the text feedback step."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text("Спасибо за вашу оценку!")
+    lang = context.user_data.get('lang', 'en')
+    await query.edit_message_text(get_translation(lang, "thank_you_for_rating"))
     context.user_data.clear()
     return ConversationHandler.END

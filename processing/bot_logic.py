@@ -415,8 +415,10 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
 
     try:
         face_cascade = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
+        # Also load the profile cascade to detect faces from the side
+        profile_cascade = cv2.CascadeClassifier('haarcascade_profileface.xml')
     except Exception as e:
-        print(f"Could not load face cascade model: {e}. Falling back to center crop.")
+        print(f"Could not load face cascade model(s): {e}. You may need to download 'haarcascade_profileface.xml'. Falling back to center crop.")
         return main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=target_width)
 
     subclips = []
@@ -434,7 +436,26 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
         frame = main_clip_resized.get_frame(t)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(80, 80))
+        # Detect faces using both frontal and profile cascades
+        faces_frontal = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80))
+        faces_profile = profile_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80))
+
+        # For profile detection, also check the flipped image to find faces looking the other way
+        gray_flipped = cv2.flip(gray, 1)
+        faces_profile_flipped = profile_cascade.detectMultiScale(gray_flipped, 1.1, 4, minSize=(80, 80))
+        
+        all_faces = []
+        if len(faces_frontal) > 0:
+            all_faces.extend(list(faces_frontal))
+        if len(faces_profile) > 0:
+            all_faces.extend(list(faces_profile))
+        
+        # Convert coordinates of flipped detections back
+        if len(faces_profile_flipped) > 0:
+            for (x, y, w, h) in faces_profile_flipped:
+                all_faces.append((gray.shape[1] - x - w, y, w, h))
+
+        faces = np.array(all_faces)
         is_new_face = False
 
         if len(faces) > 0:
@@ -692,7 +713,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     print("Ищем смысловые куски через GPT...")
     shorts_number = config.get('shorts_number', 'auto')
     # shorts_timecodes = [
-    #    { "start": '00:01:49.0', "end": "00:02:10.0", "hook": "Деньги должны стать божеством" }
+    #    { "start": '01:22:04.0', "end": "01:22:40.0", "hook": "Деньги должны стать божеством" }
     # ]
     shorts_timecodes = get_highlights_from_gpt(Path(out_dir) / "captions.txt", get_audio_duration(audio_only), shorts_number=shorts_number)
     

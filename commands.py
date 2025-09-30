@@ -7,7 +7,7 @@ from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user
 from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE
-from config import TUTORIAL_LINK
+from config import TUTORIAL_LINK, ADMIN_USER_IDS
 from datetime import datetime, timezone
 
 import csv
@@ -20,6 +20,10 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+def is_admin(user_id: int) -> bool:
+    """Checks if a user is an admin."""
+    return str(user_id) in ADMIN_USER_IDS
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
@@ -67,10 +71,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 logger.error(f"Failed to send referral notification to {referrer_id}: {e}")
 
     # Set commands for the user
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    
-
     base_commands = [
         BotCommand(command="start", description="Сгенерировать ролики"),
         BotCommand(command="help", description="Помощь и описание"),
@@ -79,7 +79,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         BotCommand(command="referral", description="Пригласить друга"),
         BotCommand(command="feedback", description="Оставить отзыв"),
     ]
-    if str(user_id) in admin_ids:
+    if is_admin(user_id):
         logger.info("User is an admin, adding admin commands.")
         base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
         base_commands.append(BotCommand(command="setbalance", description="Установить баланс пользователю"))
@@ -145,17 +145,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "@sf_tsupport_bot - по любым вопросам\n\n"
         f"👉 <a href='{TUTORIAL_LINK}'>Инструкция (1 мин. чтения)</a>"
     )
-    await update.message.reply_text(help_text, parse_mode="HTML")
+    reply_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("Как сгенерировать шортсы (1м чтения)", url=TUTORIAL_LINK)]
+    ])
+    await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
 
 async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Отправляет текущий баланс пользователя."""
     user_id = update.effective_user.id
     _, balance, _, _ = get_user(user_id)
-    keyboard = [
-        [InlineKeyboardButton("Пополнить баланс", callback_data='topup_start')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(f"Ваш текущий баланс: {balance} шортсов.", reply_markup=reply_markup)
+    await update.message.reply_text(f"Ваш баланс: {balance} шортсов 🎥\n\nПополнить баланс – /topup")
 
 async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the top-up process."""
@@ -169,17 +168,35 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     reply_markup = InlineKeyboardMarkup(keyboard)
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text("Выберите способ пополнения:", reply_markup=reply_markup)
+        await update.callback_query.edit_message_text("💰 Выберите способ пополнения:", reply_markup=reply_markup)
     else:
-        await update.message.reply_text("Выберите способ пополнения:", reply_markup=reply_markup)
+        await update.message.reply_text("💰 Выберите способ пополнения:", reply_markup=reply_markup)
     return GET_TOPUP_METHOD
-
 
 async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Adds a specified amount of shorts to a user's balance."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
+        return
+
+    try:
+        user_id_str, amount_str = context.args
+        user_id = int(user_id_str)
+        amount = int(amount_str)
+
+        if amount <= 0:
+            await update.message.reply_text("Количество шортсов должно быть положительным числом.")
+            return
+
+        add_to_user_balance(user_id, amount)
+        _, new_balance, _, _ = get_user(user_id)
+
+        await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} шортсов. Новый баланс: {new_balance}.")
+
+    except (ValueError, IndexError):
+        await update.message.reply_text("Неверный формат команды. Используйте: /addshorts <user_id> <amount>")
+
+
+    if not is_admin(update.effective_user.id):
         return
 
     try:
@@ -201,9 +218,7 @@ async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sets a user's balance to a specified amount."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
         return
 
     try:
@@ -247,9 +262,7 @@ async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT
 
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the broadcast conversation."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
         return ConversationHandler.END
 
     await update.message.reply_text("Отправьте пост, который нужно разослать юзерам. Вы можете отменить рассылку командой /cancel.")
@@ -291,9 +304,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def broadcast_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the targeted broadcast conversation."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
         return ConversationHandler.END
 
     if not context.args:
@@ -358,9 +369,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def start_discount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Starts a discount period."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
         return
 
     if not context.args:
@@ -382,9 +391,7 @@ async def start_discount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def end_discount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Ends a discount period immediately."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
         return
 
     context.bot_data['discount_active'] = False
@@ -394,9 +401,7 @@ async def end_discount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Removes a user from the database."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
         return
 
     try:
@@ -412,9 +417,7 @@ async def remove_user_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Exports all users to a CSV file (admin only)."""
-    admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-    admin_ids = [id.strip() for id in admin_ids_str.split(',')]
-    if str(update.effective_user.id) not in admin_ids:
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text("This command is for admins only.")
         return
 

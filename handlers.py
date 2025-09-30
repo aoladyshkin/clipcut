@@ -6,7 +6,8 @@ from telegram.error import TimedOut
 from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
-from processing.bot_logic import main as process_video, check_video_availability
+from processing.bot_logic import main as process_video
+from processing.download import check_video_availability
 from utils import format_config
 from analytics import log_event
 from states import (
@@ -26,12 +27,13 @@ from states import (
     PROCESSING
 )
 from datetime import datetime, timezone
-from config import REGULAR_PRICES, DISCOUNT_PRICES, FEEDBACK_GROUP_ID, DEMO_CONFIG
+from pricing import REGULAR_PRICES, DISCOUNT_PRICES, DEMO_CONFIG
+from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN
 from processing.demo import simulate_demo_processing
 
 logger = logging.getLogger(__name__)
 
-path_to_config_examples = "config_examples/"
+
 
 async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the demo process by loading the demo config."""
@@ -158,8 +160,7 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.delete()
     await context.bot.send_photo(
-        chat_id=query.message.chat_id,
-        photo=open(path_to_config_examples + 'layout_examples.png', 'rb'),
+        photo=open(CONFIG_EXAMPLES_DIR / 'layout_examples.png', 'rb'),
         caption="Выберите сетку шортса:",
         reply_markup=reply_markup
     )
@@ -243,7 +244,7 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_photo(
             chat_id=update.effective_chat.id,
-            photo=open(path_to_config_examples + 'layout_examples.png', 'rb'),
+            photo=open(CONFIG_EXAMPLES_DIR / 'layout_examples.png', 'rb'),
             caption="Выберите сетку шортса:",
             reply_markup=reply_markup
         )
@@ -310,7 +311,7 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await query.message.delete()
     await context.bot.send_photo(
         chat_id=query.message.chat_id,
-        photo=open(path_to_config_examples + 'subs_examples.png', 'rb'),
+        photo=open(CONFIG_EXAMPLES_DIR / 'subs_examples.png', 'rb'),
         caption="Выберите, как показывать субтитры:",
         reply_markup=reply_markup
     )
@@ -344,7 +345,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         try:
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
-                photo=open(path_to_config_examples + 'subs_examples.png', 'rb'),
+                photo=open(CONFIG_EXAMPLES_DIR / 'subs_examples.png', 'rb'),
                 caption="Выберите, как показывать субтитры:",
                 reply_markup=reply_markup
             )
@@ -373,7 +374,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         try:
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
-                photo=open(path_to_config_examples + 'brainrot_examples.png', 'rb'),
+                photo=open(CONFIG_EXAMPLES_DIR / 'brainrot_examples.png', 'rb'),
                 caption="Выберите brainrot видео:",
                 reply_markup=reply_markup
             )
@@ -434,7 +435,7 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.message.delete()
         await context.bot.send_photo(
             chat_id=query.message.chat_id,
-            photo=open(path_to_config_examples + 'subs_color_examples.png', 'rb'),
+            photo=open(CONFIG_EXAMPLES_DIR / 'subs_color_examples.png', 'rb'),
             caption="Выберите цвет субтитров:",
             reply_markup=reply_markup
         )
@@ -691,8 +692,7 @@ async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         total_price = round(amount * final_price_per_short, 2)
 
         # --- CryptoBot Integration (Real) ---
-        crypto = AioCryptoPay(token=os.environ.get("CRYPTO_BOT_TOKEN"), network=Networks.MAIN_NET)
-        invoice = await crypto.create_invoice(asset='USDT', amount=total_price)
+        crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
         await crypto.close()
 
         payment_url = invoice.bot_invoice_url
@@ -730,7 +730,7 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 
         try:
             # --- CryptoBot Integration (Real) ---
-            crypto = AioCryptoPay(token=os.environ.get("CRYPTO_BOT_TOKEN"), network=Networks.MAIN_NET)
+            crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
             invoices = await crypto.get_invoices(invoice_ids=invoice_id)
             await crypto.close()
 

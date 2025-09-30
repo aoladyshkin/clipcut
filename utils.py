@@ -37,3 +37,15 @@ def format_config(config, balance=None, is_demo=False):
     settings_text += f"\n{balance_text}" if balance_text else ""
 
     return settings_text
+
+def format_seconds_to_hhmmss(seconds):
+    seconds = float(seconds)
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:04.1f}"
+
+def to_seconds(t: str) -> float:
+    h, m, s_part = t.split(':')
+    s = float(s_part)
+    return int(h) * 3600 + int(m) * 60 + s

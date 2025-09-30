@@ -124,18 +124,39 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         caption = f"<b>Hook</b>: {hook}\n\n<b>Таймкоды</b>: {start[:-2]} – {end[:-2]}"
         try:
             with open(file_path, 'rb') as video_file:
-                await bot.send_video(
-                    chat_id=chat_id, 
-                    video=video_file, 
-                    caption=caption, 
-                    parse_mode="HTML", 
-                    width=720, 
-                    height=1280, 
+                message = await bot.send_video(
+                    chat_id=chat_id,
+                    video=video_file,
+                    caption=caption,
+                    parse_mode="HTML",
+                    width=720,
+                    height=1280,
                     supports_streaming=True,
                     read_timeout=600,
                     write_timeout=600,
                     reply_to_message_id=edit_message_id
                 )
+
+            forward_group_id = os.environ.get("FORWARD_RESULTS_GROUP_ID")
+            if forward_group_id:
+                try:
+                    fwd_message = await bot.forward_message(
+                        chat_id=forward_group_id,
+                        from_chat_id=message.chat_id,
+                        message_id=message.message_id
+                    )
+                    logger.info(f"Видео для чата {chat_id} переслано в группу {forward_group_id}")
+
+                    if generation_id:
+                        await bot.send_message(
+                            chat_id=forward_group_id,
+                            text=f"Generation ID: `{generation_id}`\nChat ID: `{chat_id}`",
+                            reply_to_message_id=fwd_message.message_id,
+                            parse_mode="Markdown"
+                        )
+                except Exception as e:
+                    logger.error(f"Не удалось переслать видео или отправить generation_id в группу {forward_group_id}: {e}")
+
             return True
         except Exception as e:
             logger.error(f"Ошибка при отправке видео {file_path} в чат {chat_id}: {e}")

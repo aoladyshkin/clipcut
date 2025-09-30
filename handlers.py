@@ -584,7 +584,7 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             keyboard.append([button])
     
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='back_to_topup_method')])
-
+    message_text += "\n\n(Прибрести Telegram Stars – @PremiumBot)"
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(message_text, reply_markup=reply_markup)
     return GET_TOPUP_PACKAGE

@@ -125,8 +125,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Shows language selection."""
     keyboard = [
-        [InlineKeyboardButton("English", callback_data='set_lang_en')],
-        [InlineKeyboardButton("Русский", callback_data='set_lang_ru')]
+        [InlineKeyboardButton("🇷🇺 Русский", callback_data='set_lang_ru')],
+        [InlineKeyboardButton("🇬🇧 English", callback_data='set_lang_en')]
+        
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("Please select your language:", reply_markup=reply_markup)

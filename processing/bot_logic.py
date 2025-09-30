@@ -138,39 +138,95 @@ def download_video_only(url, video_path):
         print(f"An error occurred with pytubefix while downloading video: {e}")
         return None
 
+def _find_itag_for_lang_with_yt_dlp(url, lang='ru'):
+    print(f"Используем yt-dlp для поиска itag для языка '{lang}'...")
+    try:
+        command = ["python3", "-m", "yt_dlp", "-F", url]
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
+
+        lines = result.stdout.split('\n')
+        
+        audio_streams = []
+        table_started = False
+        for line in lines:
+            if '---' in line: 
+                table_started = True
+                continue
+            if not table_started:
+                continue
+
+            if 'audio only' in line and f'[{lang}' in line:
+                match = re.match(r'^\s*([\d-]+)\s+', line)
+                if match:
+                    itag = match.group(1)
+                    tbr_match = re.search(r'(\d+)k', line)
+                    bitrate = int(tbr_match.group(1)) if tbr_match else 0
+                    audio_streams.append({'itag': itag, 'bitrate': bitrate, 'line': line})
+
+        if not audio_streams:
+            print("yt-dlp не нашел подходящих аудиопотоков.")
+            return None
+        
+        print("Найденные yt-dlp потоки с указанием языка:")
+        for s in audio_streams:
+            print(f"- {s['line']}")
+
+        best_stream = sorted(audio_streams, key=lambda x: x['bitrate'], reverse=True)[0]
+        print(f"yt-dlp выбрал лучший itag: {best_stream['itag']}")
+        return best_stream['itag']
+        
+    except subprocess.TimeoutExpired:
+        print("Тайм-аут при вызове yt-dlp для получения форматов.")
+        return None
+    except Exception as e:
+        print(f"Ошибка при вызове yt-dlp для получения форматов: {e}")
+        return None
+
 def download_audio_only(url, audio_path, lang='ru'):
     """
-    Downloads audio using pytubefix and converts it for Whisper.
-    Falls back to yt-dlp if pytubefix fails.
+    Downloads audio using yt-dlp to find and fetch the correct language,
+    falling back to pytubefix if yt-dlp fails.
     """
     audio_path = Path(audio_path).with_suffix(".ogg")
-    temp_path = audio_path.with_suffix(".temp.mp4") # pytubefix often saves audio as .mp4
+    temp_path = audio_path.with_suffix(".temp.mp4")
 
-    try:
-        # 1. Download best audio track with pytubefix
-        print("Attempting to download audio with pytubefix...")
-        yt = YouTube(url)
-        stream = yt.streams.get_audio_only()
-        if not stream:
-            raise ConnectionError("No audio stream found by pytubefix.")
-        
-        stream.download(output_path=str(temp_path.parent), filename=temp_path.name)
-        print(f"pytubefix: Audio downloaded successfully to {temp_path}")
-
-    except Exception as e:
-        print(f"pytubefix failed: {e}. Falling back to yt-dlp for audio.")
+    # 1. Find the best itag using yt-dlp's format listing
+    itag = _find_itag_for_lang_with_yt_dlp(url, lang)
+    
+    downloaded = False
+    if itag:
+        print(f"Попытка скачать аудио с itag={itag} с помощью yt-dlp...")
         try:
-            format_selector = f"bestaudio[lang={lang}]/bestaudio"
             subprocess.run([
                 "python3", "-m", "yt_dlp",
-                "-f", format_selector,
+                "-f", itag,  # Use the specific itag
                 "--user-agent", "Mozilla/5.0",
                 "-o", str(temp_path),
                 url
             ], check=True)
+            print("yt-dlp: Аудио успешно скачано.")
+            downloaded = True
         except subprocess.CalledProcessError as e_dlp:
-            print(f"yt-dlp also failed for audio: {e_dlp}")
+            print(f"yt-dlp не смог скачать аудио с itag={itag}: {e_dlp}")
+
+    # 2. If yt-dlp failed or didn't find an itag, fall back to pytubefix
+    if not downloaded:
+        print("Переключаемся на pytubefix для скачивания аудио по умолчанию.")
+        try:
+            yt = YouTube(url)
+            stream = yt.streams.get_audio_only()
+            if not stream:
+                raise ConnectionError("pytubefix не нашел аудиопотоков.")
+            
+            print(f"pytubefix скачивает аудиопоток с itag={stream.itag}...")
+            stream.download(output_path=str(temp_path.parent), filename=temp_path.name)
+            print(f"pytubefix: Аудио успешно скачано.")
+            downloaded = True
+        except Exception as e:
+            print(f"pytubefix тоже не смог скачать аудио: {e}")
             return None # Both methods failed
+
+
 
     # 2. Convert to the required .ogg format for Whisper
     try:
@@ -613,7 +669,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     audio_lang = config.get('audio_lang', 'ru')
     audio_only = download_audio_only(url, Path(out_dir) / "audio_only.ogg", lang=audio_lang)
     # audio_only = Path(out_dir) / "audio_only.ogg"
-
+    
     if not video_only or not audio_only:
         raise Exception("Произошла ошибка при скачивании видео – мы уже о ней знаем и совсем скоро всё починим!")
 

@@ -11,7 +11,9 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def check_video_availability(url: str) -> (bool, str, str):
+from localization import get_translation
+
+def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
     Checks if a YouTube video is available without downloading it.
     Returns a tuple (is_available, message).
@@ -22,18 +24,18 @@ def check_video_availability(url: str) -> (bool, str, str):
         _ = yt.title
         # Check if there are any streams available
         if not yt.streams:
-            return False, "Видео недоступно, так как для него не найдено ни одного потока для скачивания.", "no streams"
-        return True, "Видео доступно.", "Video is available"
+            return False, get_translation(lang, "no_streams_found"), "no streams"
+        return True, get_translation(lang, "video_available"), "Video is available"
     except Exception as e:
         error_message = f"Произошла непредвиденная ошибка при проверке видео: {e}"
         print(error_message)
         if "age restricted" in str(e).lower():
-            return False, "⚠️ Обработка не удалась – YouTube пометил этот ролик как 18+, и доступ к исходнику ограничен.\n\nВыбери другой ролик без ограничений — и мы всё сделаем ✨", "age restricted"
+            return False, get_translation(lang, "age_restricted_error"), "age restricted"
         if "private" in str(e).lower():
-            return False, "Это видео приватное и не может быть скачано.", "private"
+            return False, get_translation(lang, "private_video_error"), "private"
         if "unavailable" in str(e).lower():
-            return False, "⚠️ К сожалению, мы не смогли обработать это видео – владелец ролика ограничил его показ по странам и наш сервер не имеет к нему доступа.\nПопробуйте загрузить другое видео — всё должно сработать корректно ✅\n\nСпасибо, что используете Shorts Factory 🙌", str(e)[:100]
-        return False, f"Видео недоступно. Пожалуйста, проверьте ссылку или попробуйте другое видео.", str(e)[:100]
+            return False, get_translation(lang, "unavailable_video_error"), str(e)[:100]
+        return False, get_translation(lang, "video_unavailable_check_link"), str(e)[:100]
 
 def download_video_only(url, video_path):
     """Downloads the best available video up to 720p using pytubefix."""

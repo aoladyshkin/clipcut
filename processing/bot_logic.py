@@ -9,29 +9,16 @@ import contextlib
 
 
 import subprocess
-import random
 from moviepy.editor import (
     VideoFileClip,
-    TextClip,
     CompositeVideoClip,
-    ColorClip,
-    clips_array,
-    vfx,
-    concatenate_videoclips,
 )
 import json
-
-import time
-import tempfile
-import re
-import cv2
-import numpy as np
 from faster_whisper import WhisperModel
 from processing.transcription import get_transcript_segments_and_file, get_audio_duration
 from processing.subtitles import create_subtitle_clips, get_subtitle_items
-from config import OPENAI_API_KEY, HAARCASCADE_FRONTALFACE_DEFAULT, HAARCASCADE_PROFILEFACE, VIDEO_MAP
-from .download import download_video_only, download_audio_only, check_video_availability
-from .face_tracker import create_face_tracked_clip
+from config import VIDEO_MAP
+from .download import download_video_only, download_audio_only
 from .layouts import _build_video_canvas
 from .gpt import get_highlights_from_gpt
 from utils import to_seconds
@@ -116,7 +103,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-        
+
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 

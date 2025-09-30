@@ -125,7 +125,7 @@ def get_all_users_data():
     """Возвращает все данные из таблицы users."""
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, balance, generated_shorts_count, referred_by, source FROM users")
+        cursor.execute("SELECT user_id, balance, generated_shorts_count, referred_by, source, language FROM users")
         return cursor.fetchall()
 
 def clear_database():

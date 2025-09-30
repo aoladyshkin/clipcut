@@ -29,6 +29,7 @@ def is_admin(user_id: int) -> bool:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Начало диалога, запрашивает URL."""
     user_id = update.effective_user.id
+    message = update.message or update.callback_query.message
     log_event(user_id, 'start_command', {'username': update.effective_user.username})
     
     referrer_id = None
@@ -50,6 +51,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _, balance, _, lang, is_new = get_user(user_id, referrer_id=referrer_id, source=source)
 
     if is_new:
+        lang = 'ru'
+        set_user_language(user_id, lang)
         log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id, 'source': source})
         if referrer_id and referrer_id != user_id:
             # Award bonuses
@@ -59,25 +62,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             # Update local balance for the new user
             balance += 10
             
-            await update.message.reply_text("🎉 Welcome! You have received 10 bonus shorts for using a referral link.")
+            await message.reply_text(get_translation(lang, "welcome_referral_bonus"))
             
             try:
                 # Try to get the new user's username to mention them
                 new_user_mention = f"@{update.effective_user.username}" if update.effective_user.username else f"user {user_id}"
+                _, _, _, referrer_lang, _ = get_user(referrer_id)
                 await context.bot.send_message(
                     chat_id=referrer_id,
-                    text=f"🎉 Your friend {new_user_mention} joined using your link! You have received 10 bonus shorts."
+                    text=get_translation(referrer_lang, "friend_joined_referral_bonus").format(new_user_mention=new_user_mention)
                 )
             except Exception as e:
                 logger.error(f"Failed to send referral notification to {referrer_id}: {e}")
-        
-        keyboard = [
-            [InlineKeyboardButton("English", callback_data='set_lang_en')],
-            [InlineKeyboardButton("Русский", callback_data='set_lang_ru')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("Please select your language:", reply_markup=reply_markup)
-        return GET_LANGUAGE
 
     # Set commands for the user
     base_commands = [
@@ -119,7 +115,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    await update.message.reply_text(
+    await message.reply_text(
         get_translation(lang, "start_message"),
         reply_markup=reply_markup,
         parse_mode="HTML"

@@ -94,5 +94,7 @@
     "topup_invoice_description": "A package of {shorts_amount} shorts for video generation.",
     "n_shorts": "{shorts_amount} shorts",
     "something_went_wrong": "Something went wrong. Please try again.",
-    "payment_successful": "💸 Payment successful! Your balance has been topped up by {shorts_amount} shorts.\n\nNew balance: <b>{new_balance} shorts.</b>"
+    "payment_successful": "💸 Payment successful! Your balance has been topped up by {shorts_amount} shorts.\n\nNew balance: <b>{new_balance} shorts.</b>",
+    "welcome_referral_bonus": "🎉 Welcome! You have received 10 bonus shorts for using a referral link.",
+    "friend_joined_referral_bonus": "🎉 Your friend {new_user_mention} joined using your link! You have received 10 bonus shorts."
 }

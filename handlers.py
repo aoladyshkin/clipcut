@@ -25,11 +25,15 @@ from states import (
     CRYPTO_PAYMENT,
     RATING,
     FEEDBACK,
-    PROCESSING
+    PROCESSING,
+    GET_FEEDBACK_TEXT,
+    GET_TARGETED_BROADCAST_MESSAGE,
+    GET_LANGUAGE,
+    GET_BANNER
 )
 from datetime import datetime, timezone
 from pricing import REGULAR_PRICES, DISCOUNT_PRICES, DEMO_CONFIG
-from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN
+from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, ADMIN_USER_IDS
 from processing.demo import simulate_demo_processing
 
 logger = logging.getLogger(__name__)
@@ -281,27 +285,7 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data['config']['capitalize_sentences'] = False
     logger.info(f"Config for {query.from_user.id}: capitalize_sentences = False (default)")
 
-    balance = context.user_data.get('balance')
-    settings_text = format_config(context.user_data['config'], balance, lang=lang)
-
-    keyboard = [
-        [
-            InlineKeyboardButton(get_translation(lang, "confirm_button_emoji"), callback_data='confirm'),
-            InlineKeyboardButton(get_translation(lang, "reject_button_emoji"), callback_data='cancel'),
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.message.delete()
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text=get_translation(lang, "confirm_settings_prompt").format(settings_text=settings_text),
-        reply_markup=reply_markup,
-        parse_mode="HTML",
-        disable_web_page_preview=True 
-    )
-
-    return CONFIRM_CONFIG
+    return await ask_for_banner(update, context)
 
 async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Saves the background video and prompts for the subtitle type."""
@@ -421,27 +405,7 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if choice == 'no_subtitles':
         context.user_data['config']['subtitle_style'] = None
         logger.info(f"Config for {query.from_user.id}: subtitle_style = None")
-        
-        balance = context.user_data.get('balance')
-        settings_text = format_config(context.user_data['config'], balance, lang=lang)
-
-        keyboard = [
-            [
-                InlineKeyboardButton(get_translation(lang, "confirm_button_emoji"), callback_data='confirm'),
-                InlineKeyboardButton(get_translation(lang, "reject_button_emoji"), callback_data='cancel'),
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        await query.message.delete()
-        await context.bot.send_message(
-            chat_id=query.message.chat_id,
-            text=get_translation(lang, "confirm_settings_prompt_html").format(settings_text=settings_text),
-            reply_markup=reply_markup,
-            parse_mode="HTML",
-            disable_web_page_preview=True 
-        )
-        return CONFIRM_CONFIG
+        return await ask_for_banner(update, context)
     else:
         keyboard = [
             [InlineKeyboardButton(get_translation(lang, "white_color_button"), callback_data='white'), InlineKeyboardButton(get_translation(lang, "yellow_color_button"), callback_data='yellow')],
@@ -459,6 +423,80 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 
+
+async def ask_for_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Asks admin users if they want to add a banner."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    lang = context.user_data.get('lang', 'en')
+
+    if str(user_id) in ADMIN_USER_IDS:
+        keyboard = [
+            [
+                InlineKeyboardButton(get_translation(lang, "yes"), callback_data='banner_yes'),
+                InlineKeyboardButton(get_translation(lang, "no"), callback_data='banner_no'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=get_translation(lang, "add_banner_prompt"),
+            reply_markup=reply_markup
+        )
+        return GET_BANNER
+    else:
+        context.user_data['config']['add_banner'] = False
+        balance = context.user_data.get('balance')
+        settings_text = format_config(context.user_data['config'], balance, lang=lang)
+        keyboard = [
+            [
+                InlineKeyboardButton(get_translation(lang, "confirm_button_emoji"), callback_data='confirm'),
+                InlineKeyboardButton(get_translation(lang, "reject_button_emoji"), callback_data='cancel'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.message.delete()
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=get_translation(lang, "confirm_settings_prompt_html").format(settings_text=settings_text),
+            reply_markup=reply_markup,
+            parse_mode="HTML",
+            disable_web_page_preview=True 
+        )
+        return CONFIRM_CONFIG
+
+async def get_banner_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves the user's choice about the banner and shows the confirmation screen."""
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get('lang', 'en')
+    choice = query.data == 'banner_yes'
+    context.user_data['config']['add_banner'] = choice
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_step_banner_selected', {'choice': choice, 'generation_id': generation_id})
+    logger.info(f"Config for {query.from_user.id}: add_banner = {choice}")
+
+    balance = context.user_data.get('balance')
+    settings_text = format_config(context.user_data['config'], balance, lang=lang)
+
+    keyboard = [
+        [
+            InlineKeyboardButton(get_translation(lang, "confirm_button_emoji"), callback_data='confirm'),
+            InlineKeyboardButton(get_translation(lang, "reject_button_emoji"), callback_data='cancel'),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.message.delete()
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=get_translation(lang, "confirm_settings_prompt_html").format(settings_text=settings_text),
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+        disable_web_page_preview=True 
+    )
+    return CONFIRM_CONFIG
 
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Adds a task to the queue after confirmation."""

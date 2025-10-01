@@ -8,6 +8,7 @@ from handlers import (
     get_bottom_video,
     get_subtitles_type,
     get_subtitle_style,
+    get_banner_choice,
     confirm_config,
     cancel_conversation,
     topup_stars,
@@ -41,7 +42,9 @@ from states import (
     FEEDBACK,
     PROCESSING,
     GET_FEEDBACK_TEXT,
-    GET_TARGETED_BROADCAST_MESSAGE
+    GET_TARGETED_BROADCAST_MESSAGE,
+    GET_LANGUAGE,
+    GET_BANNER
 )
 
 def get_conv_handler():
@@ -72,6 +75,9 @@ def get_conv_handler():
             ],
             GET_SUBTITLE_STYLE: [
                 CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow|purple|green)$'),
+            ],
+            GET_BANNER: [
+                CallbackQueryHandler(get_banner_choice, pattern='^banner_(yes|no)$')
             ],
             CONFIRM_CONFIG: [
                 CallbackQueryHandler(confirm_config, pattern='^confirm$'),

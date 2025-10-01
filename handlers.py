@@ -170,6 +170,7 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.delete()
     await context.bot.send_photo(
+        chat_id=query.message.chat_id,
         photo=open(CONFIG_EXAMPLES_DIR / 'layout_examples.png', 'rb'),
         caption=get_translation(lang, "choose_layout_prompt"),
         reply_markup=reply_markup

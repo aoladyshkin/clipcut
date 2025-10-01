@@ -1,18 +1,27 @@
 import os
 import logging
-
-from telegram import Update, Bot, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler
 import asyncio
+import traceback
+import html
+
+from telegram import Update, Bot
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes
 import telegram.error
 
 from conversation import get_conv_handler
-from commands import menu_command, balance_command, add_shorts_command, set_user_balance_command, start_discount, end_discount, referral_command, remove_user_command, export_users_command, lang_command, set_language
+from commands import (
+    menu_command, balance_command, add_shorts_command, set_user_balance_command, 
+    start_discount, end_discount, referral_command, remove_user_command, 
+    export_users_command, lang_command, set_language
+)
 from handlers import precheckout_callback, successful_payment_callback
 from processing.bot_logic import main as process_video
 from states import RATING, GET_LANGUAGE
 from analytics import init_analytics_db, log_event
-from config import TELEGRAM_BOT_TOKEN, MAX_CONCURRENT_TASKS, FORWARD_RESULTS_GROUP_ID, DELETE_OUTPUT_AFTER_SENDING
+from config import (
+    TELEGRAM_BOT_TOKEN, MAX_CONCURRENT_TASKS, FORWARD_RESULTS_GROUP_ID, 
+    DELETE_OUTPUT_AFTER_SENDING, ADMIN_GROUP_ID, ADMIN_USER_TAG
+)
 from localization import get_translation
 from database import get_user
 
@@ -21,6 +30,31 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Log the error and send a telegram message to notify the admin."""
+    logger.error("Exception while handling an update:", exc_info=context.error)
+
+    if not ADMIN_GROUP_ID:
+        return
+
+    # Format the traceback
+    tb_list = traceback.format_exception(None, context.error, context.error.__traceback__)
+    tb_string = "".join(tb_list)
+
+    # Prepare the message text
+    message = (
+        f"An exception was raised while handling an update\n"
+        f"<pre>{html.escape(str(context.error))}</pre>\n"
+        f"Traceback:\n<pre>{html.escape(tb_string)}</pre>"
+    )
+
+    # Send the message
+    await context.bot.send_message(
+        chat_id=ADMIN_GROUP_ID,
+        text=f"{ADMIN_USER_TAG}\n{message}",
+        parse_mode="HTML"
+    )
 
 async def send_message_safely(bot: Bot, chat_id: int, text: str, **kwargs):
     try:
@@ -278,6 +312,9 @@ def main():
         return
 
     application = Application.builder().token(token).post_init(post_init_hook).build()
+
+    # Register the error handler
+    application.add_error_handler(error_handler)
 
     conv_handler = get_conv_handler()
 

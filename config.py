@@ -6,6 +6,8 @@ load_dotenv()
 
 # --- Telegram Bot ---
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+ADMIN_GROUP_ID = os.environ.get("ADMIN_GROUP_ID")
+ADMIN_USER_TAG = os.environ.get("ADMIN_USER_TAG", "@aoladyshkin")
 ADMIN_USER_IDS = [id.strip() for id in os.environ.get("ADMIN_USER_IDS", "").split(',')]
 FEEDBACK_GROUP_ID = os.environ.get("FEEDBACK_GROUP_ID")
 FORWARD_RESULTS_GROUP_ID = os.environ.get("FORWARD_RESULTS_GROUP_ID")

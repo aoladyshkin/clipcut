@@ -4,7 +4,7 @@ import asyncio
 import traceback
 import html
 
-from telegram import Update, Bot
+from telegram import Update, Bot, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes
 import telegram.error
 

@@ -11,7 +11,7 @@ import contextlib
 import subprocess
 from moviepy.editor import (
     VideoFileClip,
-    CompositeVideoClip,
+    CompositeVideoClip, ImageClip
 )
 import json
 from faster_whisper import WhisperModel
@@ -62,6 +62,8 @@ def download_media(url: str, out_dir: Path, audio_lang: str, lang: str):
         raise Exception(get_translation(lang, "download_error"))
 
     video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
+    # video_full = out_dir / Path('video.mp4')
+    # audio_only = out_dir / Path('audio_only.ogg')
     return video_full, audio_only
 
 def transcribe_audio(url: str, out_dir: Path, audio_path: Path, force_whisper: bool):
@@ -103,7 +105,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-
+        # out_dir = Path('output1')
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
@@ -223,6 +225,17 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
         else:
             final_clip = video_canvas
+        if config.get('add_banner'):
+            banner_path = 'banner.png'
+            if os.path.exists(banner_path):
+                banner_clip = (ImageClip(banner_path)
+                               .set_duration(final_clip.duration)
+                               .resize(width=final_clip.w * 0.5)
+                               .set_position(('left', 'top')))
+                final_clip = CompositeVideoClip([final_clip, banner_clip])
+            else:
+                logger.warning(f"Banner file not found at {banner_path}")
+
         final_clip = final_clip.set_duration(video_canvas.duration)
         final_clip.write_videofile(str(output_sub), fps=24, codec="libx264", audio_codec="aac")
         print(f"✅ Создан файл {output_sub}")

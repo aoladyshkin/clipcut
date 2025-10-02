@@ -126,9 +126,10 @@ def _find_itag_for_lang_with_yt_dlp(url, lang='ru'):
         for s in audio_streams:
             print(f"- {s['line']}")
 
-        best_stream = sorted(audio_streams, key=lambda x: x['bitrate'], reverse=True)[0]
-        print(f"yt-dlp выбрал лучший itag: {best_stream['itag']}")
-        return best_stream['itag']
+        sorted_streams = sorted(audio_streams, key=lambda x: x['bitrate'], reverse=True)
+        medium_stream = sorted_streams[len(sorted_streams) // 2]
+        print(f"yt-dlp выбрал средний по качеству itag: {medium_stream['itag']}")
+        return medium_stream['itag']
         
     except subprocess.TimeoutExpired:
         print("Тайм-аут при вызове yt-dlp для получения форматов.")
@@ -169,7 +170,8 @@ def download_audio_only(url, audio_path, lang='ru'):
         print("Переключаемся на pytubefix для скачивания аудио по умолчанию.")
         try:
             yt = YouTube(url)
-            stream = yt.streams.get_audio_only()
+            streams = yt.streams.filter(only_audio=True).order_by('abr').desc()
+            stream = streams[len(streams) // 2] if streams else None
             if not stream:
                 raise ConnectionError("pytubefix не нашел аудиопотоков.")
             

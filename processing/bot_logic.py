@@ -60,7 +60,7 @@ def download_media(url: str, out_dir: Path, audio_lang: str, lang: str):
 
     if not video_only or not audio_only:
         raise Exception(get_translation(lang, "download_error"))
-
+    
     video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
     # video_full = out_dir / Path('video.mp4')
     # audio_only = out_dir / Path('audio_only.ogg')
@@ -105,7 +105,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-        # out_dir = Path('output1')
+        # out_dir = Path('output10')
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
@@ -119,7 +119,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             return 0, 0
         
         shorts_number = config.get('shorts_number', 'auto')
-        # shorts_timecodes = [{ "start": "00:00:10.0", "end": "00:00:20.0", "hook": '' }]
+        # shorts_timecodes = [{ "start": "00:33:19.0", "end": "00:34:02.0", "hook": '' }]
         shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:

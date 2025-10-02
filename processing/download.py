@@ -19,7 +19,7 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     Returns a tuple (is_available, message).
     """
     try:
-        yt = YouTube(url, use_po_token=True, client='WEB')
+        yt = YouTube(url)
         # Accessing the title is a lightweight way to check for availability
         _ = yt.title
         # Check if there are any streams available
@@ -38,9 +38,9 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
         return False, get_translation(lang, "video_unavailable_check_link"), str(e)[:100]
 
 def download_video_only(url, video_path):
-    """Downloads the best available video up to 720p using pytubefix."""
+    
     try:
-        yt = YouTube(url, use_po_token=True, client='WEB')
+        yt = YouTube(url)
         stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
         if not stream:
             stream = yt.streams.filter(type="video", file_extension='mp4').order_by('resolution').desc().first()
@@ -132,7 +132,7 @@ def download_audio_only(url, audio_path, lang='ru'):
     if not downloaded:
         print("Переключаемся на pytubefix для скачивания аудио по умолчанию.")
         try:
-            yt = YouTube(url, use_po_token=True, client='WEB')
+            yt = YouTube(url)
             stream = yt.streams.get_audio_only()
             if not stream:
                 raise ConnectionError("pytubefix не нашел аудиопотоков.")

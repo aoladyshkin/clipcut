@@ -10,12 +10,20 @@ from moviepy.editor import (
 )
 from .face_tracker import create_face_tracked_clip
 
-def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, final_height):
+def _build_video_canvas(config, main_clip_raw, final_width, final_height):
+    layout = config.get('layout', 'square_center')
+    bottom_video_path = config.get('bottom_video_path')
+    use_face_tracking = config.get('use_face_tracking', False)
+
     if layout == 'square_top_brainrot_bottom':
         video_height = int(final_height * 0.6)
         bottom_height = final_height - video_height
 
-        main_clip = create_face_tracked_clip(main_clip_raw, video_height, final_width)
+        if use_face_tracking:
+            main_clip = create_face_tracked_clip(main_clip_raw, video_height, final_width)
+        else:
+            main_clip_resized = main_clip_raw.resize(height=video_height)
+            main_clip = main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=final_width)
 
         if bottom_video_path:
             full_bottom_clip = VideoFileClip(str(bottom_video_path))
@@ -81,7 +89,11 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
         subtitle_width = main_clip.w - 40
 
     elif layout == 'face_track_9_16':
-        main_clip = create_face_tracked_clip(main_clip_raw, final_height, final_width)
+        if use_face_tracking:
+            main_clip = create_face_tracked_clip(main_clip_raw, final_height, final_width)
+        else:
+            main_clip_resized = main_clip_raw.resize(height=final_height)
+            main_clip = main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=final_width)
         video_canvas = main_clip
         subtitle_y_pos = final_height * 0.75
         subtitle_width = final_width - 40
@@ -89,7 +101,11 @@ def _build_video_canvas(layout, main_clip_raw, bottom_video_path, final_width, f
     else: # square_center
         video_height = int(final_height * 0.7)
         
-        main_clip = create_face_tracked_clip(main_clip_raw, video_height, final_width)
+        if use_face_tracking:
+            main_clip = create_face_tracked_clip(main_clip_raw, video_height, final_width)
+        else:
+            main_clip_resized = main_clip_raw.resize(height=video_height)
+            main_clip = main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=final_width)
         
         bg = ColorClip(size=(final_width, final_height), color=(0,0,0), duration=main_clip.duration)
         video_canvas = CompositeVideoClip([bg, main_clip.set_position('center', 'center')])

@@ -60,7 +60,7 @@ def download_media(url: str, out_dir: Path, audio_lang: str, lang: str):
 
     if not video_only or not audio_only:
         raise Exception(get_translation(lang, "download_error"))
-
+    
     video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
     # video_full = out_dir / Path('video.mp4')
     # audio_only = out_dir / Path('audio_only.ogg')
@@ -105,7 +105,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-        # out_dir = Path('output1')
+        # out_dir = Path('output10')
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
@@ -113,13 +113,14 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             status_callback(get_translation(lang, "analyzing_video"))
         
         force_ai_transcription = config.get('force_ai_transcription', False)
+        # transcript_segments = []
         transcript_segments, lang_code = transcribe_audio(url, out_dir, audio_only, force_ai_transcription)
 
         if not transcript_segments:
             return 0, 0
         
         shorts_number = config.get('shorts_number', 'auto')
-        # shorts_timecodes = [{ "start": "00:00:10.0", "end": "00:00:20.0", "hook": '' }]
+        # shorts_timecodes = [{ "start": "00:33:19.0", "end": "00:34:02.0", "hook": '' }]
         shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:
@@ -180,9 +181,6 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
     futures = []
 
     # --- Настройки из конфига ---
-    subtitle_style = config.get('subtitle_style', 'white')
-    layout = config.get('layout', 'square_top_brainrot_bottom')
-    bottom_video_path = config.get('bottom_video_path')
     subtitles_type = config.get('subtitles_type', 'word-by-word')
 
     faster_whisper_model = None
@@ -213,7 +211,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
         main_clip_raw = VideoFileClip(str(video_path)).subclip(start_cut, end_cut)
 
         video_canvas, subtitle_y_pos, subtitle_width = _build_video_canvas(
-            layout, main_clip_raw, bottom_video_path, final_width, final_height
+            config, main_clip_raw, final_width, final_height
         )
 
         if subtitles_type != 'no_subtitles':
@@ -221,7 +219,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             subtitle_items = get_subtitle_items(
                 subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
                 faster_whisper_model)
-            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, subtitle_style)
+            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, config.get('subtitle_style', 'white'))
             final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
         else:
             final_clip = video_canvas

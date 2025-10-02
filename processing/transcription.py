@@ -340,7 +340,8 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
             print(f"Выбрана дорожка: {chosen_code}")
         except Exception as e:
             print(f"Не удалось получить субтитры с YouTube ({e}). Пытаемся через Whisper.")
-            segments = transcribe_via_whisper(audio_path)
+            raise "Скачать субтитры не получилось"
+            # segments = transcribe_via_whisper(audio_path)
             
     segments = normalize_segments(segments, duration=audio_duration)
 

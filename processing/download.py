@@ -16,30 +16,49 @@ from localization import get_translation
 def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
     Checks if a YouTube video is available without downloading it.
+    First tries pytubefix, then falls back to yt-dlp.
     Returns a tuple (is_available, message).
     """
     try:
+        # First, try with pytubefix
         yt = YouTube(url)
-        # Accessing the title is a lightweight way to check for availability
         _ = yt.title
-        # Check if there are any streams available
         if not yt.streams:
             return False, get_translation(lang, "no_streams_found"), "no streams"
         return True, get_translation(lang, "video_available"), "Video is available"
     except Exception as e:
-        error_message = f"Произошла непредвиденная ошибка при проверке видео: {e}"
-        print(error_message)
-        if "age restricted" in str(e).lower():
+        logger.warning(f"pytubefix failed to check video availability: {e}. Falling back to yt-dlp.")
+        # If pytubefix fails, try with yt-dlp
+        return _check_video_availability_yt_dlp(url, lang)
+
+def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, str):
+    """
+    Checks video availability using yt-dlp.
+    """
+    try:
+        command = ["python3", "-m", "yt_dlp", "--get-title", "--skip-download", url]
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
+        if result.stdout.strip():
+            return True, get_translation(lang, "video_available"), "Video is available"
+        else:
+            return False, get_translation(lang, "unavailable_video_error"), "yt-dlp found no title"
+    except subprocess.CalledProcessError as e:
+        error_message = e.stderr.lower()
+        if "age restricted" in error_message:
             return False, get_translation(lang, "age_restricted_error"), "age restricted"
-        if "private" in str(e).lower():
+        if "private" in error_message:
             return False, get_translation(lang, "private_video_error"), "private"
-        if "unavailable" in str(e).lower():
-            return False, get_translation(lang, "unavailable_video_error"), str(e)[:100]
-        return False, get_translation(lang, "video_unavailable_check_link"), str(e)[:100]
+        if "unavailable" in error_message:
+            return False, get_translation(lang, "unavailable_video_error"), "unavailable"
+        return False, get_translation(lang, "video_unavailable_check_link"), error_message
+    except Exception as e:
+        return False, get_translation(lang, "video_unavailable_check_link"), str(e)
+
+
 
 def download_video_only(url, video_path):
-    """Downloads the best available video up to 720p using pytubefix."""
     try:
+        # First, try with pytubefix
         yt = YouTube(url)
         stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
         if not stream:
@@ -54,8 +73,25 @@ def download_video_only(url, video_path):
         print(f"pytubefix: Video downloaded successfully to {video_path}")
         return video_path
     except Exception as e:
-        logger.error(f"An error occurred with pytubefix while downloading video: {e}", exc_info=True)
+        logger.warning(f"pytubefix failed to download video: {e}. Falling back to yt-dlp.")
+        # If pytubefix fails, try with yt-dlp
+        return _download_video_only_yt_dlp(url, video_path)
+
+def _download_video_only_yt_dlp(url, video_path):
+    try:
+        command = [
+            "python3", "-m", "yt_dlp",
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "-o", str(video_path),
+            url
+        ]
+        subprocess.run(command, check=True, timeout=300) # 5-minute timeout
+        print(f"yt-dlp: Video downloaded successfully to {video_path}")
+        return video_path
+    except Exception as e:
+        logger.error(f"An error occurred with yt-dlp while downloading video: {e}", exc_info=True)
         raise
+
 
 def _find_itag_for_lang_with_yt_dlp(url, lang='ru'):
     print(f"Используем yt-dlp для поиска itag для языка '{lang}'...")
@@ -90,9 +126,10 @@ def _find_itag_for_lang_with_yt_dlp(url, lang='ru'):
         for s in audio_streams:
             print(f"- {s['line']}")
 
-        best_stream = sorted(audio_streams, key=lambda x: x['bitrate'], reverse=True)[0]
-        print(f"yt-dlp выбрал лучший itag: {best_stream['itag']}")
-        return best_stream['itag']
+        sorted_streams = sorted(audio_streams, key=lambda x: x['bitrate'], reverse=True)
+        medium_stream = sorted_streams[len(sorted_streams) // 2]
+        print(f"yt-dlp выбрал средний по качеству itag: {medium_stream['itag']}")
+        return medium_stream['itag']
         
     except subprocess.TimeoutExpired:
         print("Тайм-аут при вызове yt-dlp для получения форматов.")
@@ -133,7 +170,8 @@ def download_audio_only(url, audio_path, lang='ru'):
         print("Переключаемся на pytubefix для скачивания аудио по умолчанию.")
         try:
             yt = YouTube(url)
-            stream = yt.streams.get_audio_only()
+            streams = yt.streams.filter(only_audio=True).order_by('abr').desc()
+            stream = streams[len(streams) // 2] if streams else None
             if not stream:
                 raise ConnectionError("pytubefix не нашел аудиопотоков.")
             

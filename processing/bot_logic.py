@@ -113,6 +113,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             status_callback(get_translation(lang, "analyzing_video"))
         
         force_ai_transcription = config.get('force_ai_transcription', False)
+        # transcript_segments = []
         transcript_segments, lang_code = transcribe_audio(url, out_dir, audio_only, force_ai_transcription)
 
         if not transcript_segments:
@@ -180,9 +181,6 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
     futures = []
 
     # --- Настройки из конфига ---
-    subtitle_style = config.get('subtitle_style', 'white')
-    layout = config.get('layout', 'square_top_brainrot_bottom')
-    bottom_video_path = config.get('bottom_video_path')
     subtitles_type = config.get('subtitles_type', 'word-by-word')
 
     faster_whisper_model = None
@@ -213,7 +211,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
         main_clip_raw = VideoFileClip(str(video_path)).subclip(start_cut, end_cut)
 
         video_canvas, subtitle_y_pos, subtitle_width = _build_video_canvas(
-            layout, main_clip_raw, bottom_video_path, final_width, final_height
+            config, main_clip_raw, final_width, final_height
         )
 
         if subtitles_type != 'no_subtitles':
@@ -221,7 +219,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             subtitle_items = get_subtitle_items(
                 subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
                 faster_whisper_model)
-            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, subtitle_style)
+            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, config.get('subtitle_style', 'white'))
             final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
         else:
             final_clip = video_canvas

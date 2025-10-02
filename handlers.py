@@ -16,6 +16,7 @@ from states import (
     GET_SUBTITLE_STYLE,
     GET_BOTTOM_VIDEO,
     GET_LAYOUT,
+    GET_FACE_TRACKING,
     GET_SUBTITLES_TYPE,
     CONFIRM_CONFIG,
     GET_SHORTS_NUMBER,
@@ -316,7 +317,7 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return GET_SUBTITLES_TYPE
 
 async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Saves the layout and prompts for the background video (or skips)."""
+    """Saves the layout and prompts for the background video or face tracking."""
     query = update.callback_query
     await query.answer()
     lang = context.user_data.get('lang', 'en')
@@ -328,7 +329,24 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await query.message.delete()
 
-    if layout_choice in ['square_center', 'full_center', 'face_track_9_16']:
+    # Check if this layout is eligible for face tracking question
+    if layout_choice in ['square_top_brainrot_bottom', 'face_track_9_16', 'square_center']:
+        keyboard = [
+            [
+                InlineKeyboardButton(get_translation(lang, "yes_track_face"), callback_data='track_yes'),
+                InlineKeyboardButton(get_translation(lang, "no_track_face"), callback_data='track_no'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_message(
+            chat_id=query.message.chat_id,
+            text=get_translation(lang, "ask_face_tracking"),
+            reply_markup=reply_markup
+        )
+        return GET_FACE_TRACKING
+
+    # For other layouts, proceed as before
+    if layout_choice in ['full_center']: # This was combined in the original logic
         context.user_data['config']['bottom_video'] = None
         logger.info(f"Layout for {query.from_user.id} is {layout_choice}, skipping bottom video selection.")
         
@@ -341,27 +359,14 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        try:
-            await context.bot.send_photo(
-                chat_id=query.message.chat_id,
-                photo=open(CONFIG_EXAMPLES_DIR / 'subs_examples.png', 'rb'),
-                caption=get_translation(lang, "choose_subtitle_display_prompt"),
-                reply_markup=reply_markup
-            )
-        except TimedOut:
-            logger.warning(f"Timeout error sending photo to {query.message.chat_id} in get_layout. Sending text fallback.")
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=get_translation(lang, "image_load_failed_subs_prompt"),
-                reply_markup=reply_markup
-            )
-        except Exception as e:
-            logger.error(f"Error sending photo in get_layout (if block): {e}", exc_info=True)
-            await context.bot.send_message(chat_id=query.message.chat_id, text=get_translation(lang, "unexpected_error_try_again"))
-            return ConversationHandler.END
-            
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(CONFIG_EXAMPLES_DIR / 'subs_examples.png', 'rb'),
+            caption=get_translation(lang, "choose_subtitle_display_prompt"),
+            reply_markup=reply_markup
+        )
         return GET_SUBTITLES_TYPE
-    else:
+    else: # This covers 'full_top_brainrot_bottom'
         keyboard = [
             [
                 InlineKeyboardButton(get_translation(lang, "gta_button"), callback_data='gta'),
@@ -370,26 +375,68 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        try:
-            await context.bot.send_photo(
-                chat_id=query.message.chat_id,
-                photo=open(CONFIG_EXAMPLES_DIR / 'brainrot_examples.png', 'rb'),
-                caption=get_translation(lang, "choose_brainrot_video_prompt"),
-                reply_markup=reply_markup
-            )
-        except TimedOut:
-            logger.warning(f"Timeout error sending photo to {query.message.chat_id} in get_layout. Sending text fallback.")
-            await context.bot.send_message(
-                chat_id=query.message.chat_id,
-                text=get_translation(lang, "image_load_failed_brainrot_prompt"),
-                reply_markup=reply_markup
-            )
-        except Exception as e:
-            logger.error(f"Error sending photo in get_layout (else block): {e}", exc_info=True)
-            await context.bot.send_message(chat_id=query.message.chat_id, text=get_translation(lang, "unexpected_error_try_again"))
-            return ConversationHandler.END
-
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(CONFIG_EXAMPLES_DIR / 'brainrot_examples.png', 'rb'),
+            caption=get_translation(lang, "choose_brainrot_video_prompt"),
+            reply_markup=reply_markup
+        )
         return GET_BOTTOM_VIDEO
+
+async def get_face_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves the face tracking choice and determines the next step."""
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get('lang', 'en')
+    
+    choice = query.data == 'track_yes'
+    context.user_data['config']['use_face_tracking'] = choice
+
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'config_step_face_tracking_selected', {'choice': choice, 'generation_id': generation_id})
+    logger.info(f"Config for {query.from_user.id}: use_face_tracking = {choice}")
+
+    layout_choice = context.user_data['config']['layout']
+    await query.message.delete()
+
+    # Replicate the logic from the original get_layout to decide where to go next.
+    if layout_choice == 'square_top_brainrot_bottom':
+        # This layout needs a bottom video
+        keyboard = [
+            [
+                InlineKeyboardButton(get_translation(lang, "gta_button"), callback_data='gta'),
+                InlineKeyboardButton(get_translation(lang, "minecraft_button"), callback_data='minecraft'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(CONFIG_EXAMPLES_DIR / 'brainrot_examples.png', 'rb'),
+            caption=get_translation(lang, "choose_brainrot_video_prompt"),
+            reply_markup=reply_markup
+        )
+        return GET_BOTTOM_VIDEO
+    else: # face_track_9_16 or square_center
+        # These layouts skip the bottom video selection
+        context.user_data['config']['bottom_video'] = None
+        logger.info(f"Layout for {query.from_user.id} is {layout_choice}, skipping bottom video selection.")
+        
+        keyboard = [
+            [
+                InlineKeyboardButton(get_translation(lang, "subtitle_type_word"), callback_data='word-by-word'),
+                InlineKeyboardButton(get_translation(lang, "subtitle_type_phrase"), callback_data='phrases'),
+            ],
+            [InlineKeyboardButton(get_translation(lang, "no_subtitles_button"), callback_data='no_subtitles')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await context.bot.send_photo(
+            chat_id=query.message.chat_id,
+            photo=open(CONFIG_EXAMPLES_DIR / 'subs_examples.png', 'rb'),
+            caption=get_translation(lang, "choose_subtitle_display_prompt"),
+            reply_markup=reply_markup
+        )
+        return GET_SUBTITLES_TYPE
 
 async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Saves the subtitle type and prompts for subtitle style or confirmation."""

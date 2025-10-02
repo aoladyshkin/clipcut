@@ -25,9 +25,8 @@
     "processing_start_error": "❌ Failed to start video processing: {error_message}. Please top up your balance.",
     "processing_started": "⚡ Your request has been taken into work. Starting video download and processing... This may take some time.",
     "video_caption": "<b>Hook</b>: {hook}\n\n<b>Timestamps</b>: {start} – {end}",
-    "processing_complete": "✅ <b>Processing complete!</b>\n\nYour new balance: {new_balance} shorts.\nTop up balance – /topup",
+    "processing_complete": "✅ <b>Processing complete!</b>Rate the result from 1 to 5 🤗\n\nYour new balance: {new_balance} shorts.\nTop up balance – /topup",
     "extra_shorts_found": "\n\nℹ️ Found {extra_shorts_found} more suitable fragments, but there was not enough balance for them.",
-    "rate_results_prompt": "Rate the result from 1 to 5",
     "no_shorts_generated": "<b>Processing complete</b>, but not a single short was created.\n\nYour balance has not changed.",
     "critical_processing_error": "A critical error occurred during video processing: {e}",
     "download_error": "An error occurred while downloading the video – we are already aware of it and will fix it very soon!",
@@ -113,6 +112,8 @@
     "not_selected": "Not selected",
     "brainrot_status": "<b>🧠 Brainrot</b>: {status}\n",
     "disabled": "disabled",
+    "enabled": "enabled",
+    "face_tracking_status": "<b>👤 Face Tracking</b>: {status}\n",
     "subtitles_status": "<b>🔤 Subtitles</b>: {status}\n",
     "subtitle_color_status": "<b>🎨 Subtitle color</b>: {color}\n",
     "no_streams_found": "Video is unavailable as no download streams were found for it.",
@@ -123,5 +124,8 @@
     "video_unavailable_check_link": "Video unavailable. Please check the link or try another video.",
     "add_banner_prompt": "Add a banner to the video?",
     "yes": "Yes",
-    "no": "No"
+    "no": "No",
+    "ask_face_tracking": "Track face in the frame for automatic centering?",
+    "yes_track_face": "Yes, track",
+    "no_track_face": "No, keep centered"
 }

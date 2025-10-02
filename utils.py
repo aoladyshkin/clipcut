@@ -27,10 +27,17 @@ def format_config(config, balance=None, is_demo=False, lang='ru'):
 
     settings_text = (
         get_translation(lang, 'shorts_quantity').format(shorts_number_text=shorts_number_text) +
-        get_translation(lang, 'format_layout').format(layout=layout_map.get(config.get('layout'), get_translation(lang, 'not_selected'))) +
-        get_translation(lang, 'brainrot_status').format(status=video_map.get(config.get('bottom_video'), get_translation(lang, 'disabled'))) +
-        get_translation(lang, 'subtitles_status').format(status=sub_type_map.get(config.get('subtitles_type'), get_translation(lang, 'not_selected')))
+        get_translation(lang, 'format_layout').format(layout=layout_map.get(config.get('layout'), get_translation(lang, 'not_selected')))
     )
+
+    layout = config.get('layout')
+    if layout in ['square_top_brainrot_bottom', 'face_track_9_16', 'square_center']:
+        use_tracking = config.get('use_face_tracking', False)
+        status = get_translation(lang, "enabled") if use_tracking else get_translation(lang, "disabled")
+        settings_text += get_translation(lang, "face_tracking_status").format(status=status)
+
+    settings_text += get_translation(lang, 'brainrot_status').format(status=video_map.get(config.get('bottom_video'), get_translation(lang, 'disabled'))) 
+    settings_text += get_translation(lang, 'subtitles_status').format(status=sub_type_map.get(config.get('subtitles_type'), get_translation(lang, 'not_selected')))
     if config.get('subtitles_type') != 'no_subtitles':
         settings_text += get_translation(lang, 'subtitle_color_status').format(color=sub_style_map.get(config.get('subtitle_style'), get_translation(lang, 'not_selected')))
         

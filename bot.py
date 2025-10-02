@@ -238,22 +238,17 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             if extra_shorts_found > 0:
                 final_message += get_translation(lang, "extra_shorts_found").format(extra_shorts_found=extra_shorts_found)
 
+            # Create rating keyboard
+            rating_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(str(i), callback_data=f'rate_{i}') for i in range(1, 6)]
+            ])
+
+            # Send one message with keyboard
             await send_message_safely(
                 bot,
                 chat_id=chat_id,
                 text=final_message,
                 parse_mode="HTML",
-                reply_to_message_id=status_message_id
-            )
-
-            # Ask for rating
-            rating_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(str(i), callback_data=f'rate_{i}') for i in range(1, 6)]
-            ])
-            await send_message_safely(
-                bot,
-                chat_id=chat_id,
-                text=get_translation(lang, "rate_results_prompt"),
                 reply_markup=rating_keyboard,
                 reply_to_message_id=status_message_id
             )

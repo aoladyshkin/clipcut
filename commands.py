@@ -216,27 +216,6 @@ async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except (ValueError, IndexError):
         await update.message.reply_text("Неверный формат команды. Используйте: /addshorts <user_id> <amount>")
 
-
-    if not is_admin(update.effective_user.id):
-        return
-
-    try:
-        user_id_str, amount_str = context.args
-        user_id = int(user_id_str)
-        amount = int(amount_str)
-
-        if amount <= 0:
-            await update.message.reply_text("Количество шортсов должно быть положительным числом.")
-            return
-
-        add_to_user_balance(user_id, amount)
-        _, new_balance, _, _, _ = get_user(user_id)
-
-        await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} шортсов. Новый баланс: {new_balance}.")
-
-    except (ValueError, IndexError):
-        await update.message.reply_text("Неверный формат команды. Используйте: /addshorts <user_id> <amount>")
-
 async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sets a user's balance to a specified amount."""
     if not is_admin(update.effective_user.id):

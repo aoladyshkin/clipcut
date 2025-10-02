@@ -865,12 +865,8 @@ async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data['rating_id'] = rating_id
     context.user_data['rating'] = rating
 
-    keyboard = [[InlineKeyboardButton(get_translation(lang, "skip_button"), callback_data='skip_feedback')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await query.edit_message_text(
-        text=get_translation(lang, "thank_you_for_rating_leave_feedback"),
-        reply_markup=reply_markup
+        text=get_translation(lang, "thank_you_for_rating_leave_feedback")
     )
     return FEEDBACK
 

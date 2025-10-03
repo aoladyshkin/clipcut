@@ -121,7 +121,7 @@
     "age_restricted_error": "⚠️ Processing failed - YouTube has marked this video as 18+ and access to the source is restricted.\n\nChoose another video without restrictions - and we'll do everything ✨",
     "private_video_error": "This video is private and cannot be downloaded.",
     "unavailable_video_error": "⚠️ Unfortunately, we could not process this video - the owner of the video has restricted its display by country and our server does not have access to it.\nTry uploading another video - everything should work correctly ✅\n\nThanks for using Shorts Factory 🙌",
-    "video_unavailable_check_link": "Video unavailable. Please check the link or try another video.",
+    "video_unavailable_check_link": "Video unavailable at this time( Please check the link or try another video.",
     "add_banner_prompt": "Add a banner to the video?",
     "yes": "Yes",
     "no": "No",

@@ -53,26 +53,35 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
 
         faces = np.array(all_faces)
         
+        # Determine if we should be in group mode for this frame
         use_group_logic = False
         if len(faces) > 1:
             x_min = min(faces[:, 0])
             x_max = max(faces[:, 0] + faces[:, 2])
             group_width = x_max - x_min
-            
-            # Check if the group's width is less than the target width with a 10% buffer
             if group_width < target_width * 0.9:
                 use_group_logic = True
 
         current_face_box = None
         if use_group_logic:
-            # If faces fit, calculate the group bounding box and track it
+            # Calculate the ideal group box for the current frame
             y_min = min(faces[:, 1])
             y_max = max(faces[:, 1] + faces[:, 3])
-            group_box = np.array([x_min, y_min, group_width, y_max - y_min])
-            tracked_face_box = group_box
+            current_group_box = np.array([x_min, y_min, group_width, y_max - y_min])
+
+            # Smoothly update the tracked_face_box towards the new group box
+            if tracked_face_box is None:
+                # First time entering group mode (or after reset)
+                tracked_face_box = current_group_box
+            else:
+                # Smooth the transition to avoid jumps
+                alpha = 0.4 
+                tracked_face_box = (1 - alpha) * tracked_face_box + alpha * current_group_box
+            
             current_face_box = tracked_face_box
+
         elif len(faces) > 0:
-            # Otherwise, use the original single-face tracking logic
+            # Fallback to original single-face tracking logic
             if tracked_face_box is None:
                 tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
             else:

@@ -127,6 +127,7 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             'video_availability_error',
             {'url': url, 'error': err}
         )
+        logger.warning(f"Ошибка проверки доступности видео: {err}")
         return GET_URL
 
     context.user_data['url'] = url

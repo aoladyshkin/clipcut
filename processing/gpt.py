@@ -3,11 +3,13 @@
 import os
 import json
 import time
+import logging
 from openai import OpenAI
 from config import OPENAI_API_KEY
 from utils import format_seconds_to_hhmmss
 
 client = OpenAI(api_key=OPENAI_API_KEY)
+logger = logging.getLogger(__name__)
 
 def gpt_gpt_prompt(shorts_number):
     prompt = ( '''
@@ -148,6 +150,7 @@ def _response_text(resp) -> str:
 def _extract_json_array(text: str) -> str:
     start = text.find('[')
     if start == -1:
+        logger.warning(f"Ответ GPT {text}")
         raise ValueError("В ответе GPT не найден JSON-массив.")
     depth = 0; in_str = False; esc = False
     for i, ch in enumerate(text[start:], start=start):

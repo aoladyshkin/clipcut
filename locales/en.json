@@ -25,7 +25,7 @@
     "processing_start_error": "❌ Failed to start video processing: {error_message}. Please top up your balance.",
     "processing_started": "⚡ Your request has been taken into work. Starting video download and processing... This may take some time.",
     "video_caption": "<b>Hook</b>: {hook}\n\n<b>Timestamps</b>: {start} – {end}",
-    "processing_complete": "✅ <b>Processing complete!</b>Rate the result from 1 to 5 🤗\n\nYour new balance: {new_balance} shorts.\nTop up balance – /topup",
+    "processing_complete": "✅ <b>Processing complete!</b> Rate the result from 1 to 5 🤗\n\nYour new balance: {new_balance} shorts.\nTop up balance – /topup",
     "extra_shorts_found": "\n\nℹ️ Found {extra_shorts_found} more suitable fragments, but there was not enough balance for them.",
     "no_shorts_generated": "<b>Processing complete</b>, but not a single short was created.\n\nYour balance has not changed.",
     "critical_processing_error": "A critical error occurred during video processing: {e}",

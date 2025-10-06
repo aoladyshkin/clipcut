@@ -39,10 +39,10 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
         frame = main_clip_resized.get_frame(t)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         
-        faces_frontal = face_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80))
-        faces_profile = profile_cascade.detectMultiScale(gray, 1.1, 4, minSize=(80, 80))
+        faces_frontal = face_cascade.detectMultiScale(gray, 1.1, 6, minSize=(100, 100))
+        faces_profile = profile_cascade.detectMultiScale(gray, 1.1, 6, minSize=(100, 100))
         gray_flipped = cv2.flip(gray, 1)
-        faces_profile_flipped = profile_cascade.detectMultiScale(gray_flipped, 1.1, 4, minSize=(80, 80))
+        faces_profile_flipped = profile_cascade.detectMultiScale(gray_flipped, 1.1, 6, minSize=(100, 100))
         
         all_faces = []
         if len(faces_frontal) > 0: all_faces.extend(list(faces_frontal))
@@ -53,14 +53,14 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
 
         faces = np.array(all_faces)
         
-        # Determine if we should be in group mode for this frame
+        # Determine if we should be in group mode for this frame (temporarily disabled)
         use_group_logic = False
-        if len(faces) > 1:
-            x_min = min(faces[:, 0])
-            x_max = max(faces[:, 0] + faces[:, 2])
-            group_width = x_max - x_min
-            if group_width < target_width * 0.9:
-                use_group_logic = True
+        # if len(faces) > 1:
+        #     x_min = min(faces[:, 0])
+        #     x_max = max(faces[:, 0] + faces[:, 2])
+        #     group_width = x_max - x_min
+        #     if group_width < target_width * 0.9:
+        #         use_group_logic = True
 
         current_face_box = None
         if use_group_logic:
@@ -90,8 +90,11 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
                 max_allowed_distance = tracked_face_box[2] * 1.5
                 if distance(get_box_center(closest_face), previous_center) < max_allowed_distance:
                     tracked_face_box = closest_face
-                else:
-                    tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+                # else:
+                #     # If the closest face is too far, we assume it's a false positive
+                #     # and we don't update the tracker. The interpolation logic will hold
+                #     # the last known position.
+                #     tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
             current_face_box = tracked_face_box
         else:
             # No faces detected

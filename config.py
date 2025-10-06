@@ -24,6 +24,7 @@ HAARCASCADE_FRONTALFACE_DEFAULT = str(PROJECT_ROOT / "haarcascade_frontalface_de
 HAARCASCADE_PROFILEFACE = str(PROJECT_ROOT / "haarcascade_profileface.xml")
 CONFIG_EXAMPLES_DIR = PROJECT_ROOT / "config_examples"
 DEMO_SHORTS_DIR = PROJECT_ROOT / "demo_shorts"
+YOUTUBE_COOKIES_FILE = os.environ.get("YOUTUBE_COOKIES_FILE")
 
 VIDEO_MAP = {
     'gta': str(KEEPERS_DIR / 'gta.mp4'),

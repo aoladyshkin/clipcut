@@ -5,6 +5,7 @@ import subprocess
 import re
 from pathlib import Path
 from pytubefix import YouTube
+from config import YOUTUBE_COOKIES_FILE
 
 
 import logging
@@ -12,6 +13,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 from localization import get_translation
+
+def _get_yt_dlp_command(base_command):
+    if YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+        # Insert --cookies after the initial 'python -m yt_dlp' part
+        return base_command[:3] + ["--cookies", YOUTUBE_COOKIES_FILE] + base_command[3:]
+    return base_command
 
 def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
@@ -36,7 +43,7 @@ def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, 
     Checks video availability using yt-dlp.
     """
     try:
-        command = ["python3", "-m", "yt_dlp", "--get-title", "--skip-download", url]
+        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "--get-title", "--skip-download", url])
         result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
         if result.stdout.strip():
             return True, get_translation(lang, "video_available"), "Video is available"
@@ -53,7 +60,6 @@ def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, 
         return False, get_translation(lang, "video_unavailable_check_link"), error_message
     except Exception as e:
         return False, get_translation(lang, "video_unavailable_check_link"), str(e)
-
 
 
 def download_video_only(url, video_path):
@@ -79,12 +85,12 @@ def download_video_only(url, video_path):
 
 def _download_video_only_yt_dlp(url, video_path):
     try:
-        command = [
+        command = _get_yt_dlp_command([
             "python3", "-m", "yt_dlp",
             "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "-o", str(video_path),
             url
-        ]
+        ])
         subprocess.run(command, check=True, timeout=300) # 5-minute timeout
         print(f"yt-dlp: Video downloaded successfully to {video_path}")
         return video_path
@@ -92,11 +98,10 @@ def _download_video_only_yt_dlp(url, video_path):
         logger.error(f"An error occurred with yt-dlp while downloading video: {e}", exc_info=True)
         raise
 
-
 def _find_itag_for_lang_with_yt_dlp(url, lang='ru'):
     print(f"Используем yt-dlp для поиска itag для языка '{lang}'...")
     try:
-        command = ["python3", "-m", "yt_dlp", "-F", url]
+        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "-F", url])
         result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
 
         lines = result.stdout.split('\n')
@@ -153,13 +158,14 @@ def download_audio_only(url, audio_path, lang='ru'):
     if itag:
         print(f"Попытка скачать аудио с itag={itag} с помощью yt-dlp...")
         try:
-            subprocess.run([
+            command = _get_yt_dlp_command([
                 "python3", "-m", "yt_dlp",
                 "-f", itag,  # Use the specific itag
                 "--user-agent", "Mozilla/5.0",
                 "-o", str(temp_path),
                 url
-            ], check=True)
+            ])
+            subprocess.run(command, check=True)
             print("yt-dlp: Аудио успешно скачано.")
             downloaded = True
         except subprocess.CalledProcessError as e_dlp:

@@ -56,7 +56,7 @@ def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, 
         if "private" in error_message:
             return False, get_translation(lang, "private_video_error"), "private"
         if "unavailable" in error_message:
-            return False, get_translation(lang, "unavailable_video_error"), "unavailable"
+            return False, get_translation(lang, "unavailable_video_error"), error_message[:400]
         return False, get_translation(lang, "video_unavailable_check_link"), error_message
     except Exception as e:
         return False, get_translation(lang, "video_unavailable_check_link"), str(e)

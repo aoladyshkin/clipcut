@@ -93,6 +93,7 @@ def get_conv_handler():
                 CallbackQueryHandler(handle_rating, pattern='^rate_')
             ],
             FEEDBACK: [
+                MessageHandler(filters.TEXT & (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/')), get_url),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_feedback),
                 CallbackQueryHandler(skip_feedback, pattern='^skip_feedback$')
             ],

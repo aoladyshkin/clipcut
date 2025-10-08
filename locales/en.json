@@ -127,5 +127,6 @@
     "no": "No",
     "ask_face_tracking": "Track face in the frame for automatic centering?",
     "yes_track_face": "Yes, track",
-    "no_track_face": "No, keep centered"
+    "no_track_face": "No, keep centered",
+    "subtitles_not_found": "The video has no subtitles. Please select another video."
 }

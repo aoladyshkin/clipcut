@@ -22,21 +22,53 @@ def _get_yt_dlp_command(base_command):
 
 def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
-    Checks if a YouTube video is available without downloading it.
-    First tries pytubefix, then falls back to yt-dlp.
-    Returns a tuple (is_available, message).
+    Checks if a YouTube video is available and has subtitles.
+    First tries pytubefix for availability, then falls back to yt-dlp.
+    Subtitles are checked with yt-dlp.
+    Returns a tuple (is_available, message, error_log).
     """
+    # 1. Check for video availability
     try:
         # First, try with pytubefix
         yt = YouTube(url)
         _ = yt.title
         if not yt.streams:
             return False, get_translation(lang, "no_streams_found"), "no streams"
-        return True, get_translation(lang, "video_available"), "Video is available"
     except Exception as e:
         logger.warning(f"pytubefix failed to check video availability: {e}. Falling back to yt-dlp.")
         # If pytubefix fails, try with yt-dlp
-        return _check_video_availability_yt_dlp(url, lang)
+        is_available_yt_dlp, message_yt_dlp, err_yt_dlp = _check_video_availability_yt_dlp(url, lang)
+        if not is_available_yt_dlp:
+            return False, message_yt_dlp, err_yt_dlp
+
+    # 2. If video is available, check for subtitles
+    if not _check_subtitles_availability_yt_dlp(url):
+        return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
+
+    # 3. If both are available, return success
+    return True, get_translation(lang, "video_available"), "Video is available"
+
+def _check_subtitles_availability_yt_dlp(url: str) -> bool:
+    """
+    Checks if subtitles are available for a video using yt-dlp.
+    """
+    try:
+        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "--list-subs", "--skip-download", url])
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
+        # If yt-dlp finds subtitles, it will list them. If not, the output will be empty or show "no subtitles".
+        if "Available subtitles" in result.stdout or "Available automatic captions" in result.stdout:
+            return True
+        return False
+    except subprocess.CalledProcessError as e:
+        # If the video is unavailable, yt-dlp might return an error, which is fine.
+        # We are only interested in cases where we can check for subs.
+        logger.warning(f"yt-dlp returned an error when checking for subtitles, but we proceed: {e.stderr}")
+        # We can assume there are no subtitles if the command fails,
+        # as availability is checked before this function is called.
+        return False
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while checking for subtitles with yt-dlp: {e}")
+        return False
 
 def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, str):
     """

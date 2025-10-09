@@ -105,7 +105,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-        # out_dir = Path('output10')
+        # out_dir = Path('output2')
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
@@ -120,7 +120,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             return 0, 0
         
         shorts_number = config.get('shorts_number', 'auto')
-        # shorts_timecodes = [{ "start": "00:33:19.0", "end": "00:34:02.0", "hook": '' }]
+        # shorts_timecodes = [{ "start": "00:03:19.0", "end": "00:04:02.0", "hook": '' }]
         shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:
@@ -187,7 +187,7 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
 
     # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':
-        faster_whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+        faster_whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
 
     # No longer collecting results in a list to return
     for i, short in enumerate(shorts_timecodes, 1):

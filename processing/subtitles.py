@@ -14,11 +14,14 @@ logger = logging.getLogger(__name__)
 spell = SpellChecker(language='ru')
 
 def _correct_word(word):
-    return spell.correction(word)
+    corrected = spell.correction(word)
+    if corrected is None:
+        return word
+    return corrected
 
-# ============================
+# ============================ 
 # НАСТРОЙКИ (минимум логики)
-# ============================
+# ============================ 
 
 AUDIO_PAD_SEC = 0.20                 # небольшой паддинг по краям, чтобы не терять слова на стыках
 MIN_WORD_DURATION_SEC = 0.03         # отсечь сверхкороткие «слова»-артефакты
@@ -27,13 +30,13 @@ REF_SNAP_SIM_THRESHOLD = 0.62        # порог похожести (0..1) дл
 TEXT_FONT = "fonts/Montserrat.ttf"   # путь к шрифту для отрисовки сабов MoviePy
 
 
-# ============================
+# ============================ 
 # УТИЛИТЫ
-# ============================
+# ============================ 
 
 # Разрешаем буквы/цифры/дефис. Всё остальное срезаем по краям.
-_TRIM_PUNCT = re.compile(r"^[^0-9A-Za-zА-Яа-яЁё\-]+|[^0-9A-Za-zА-Яа-яЁё\-]+$", re.UNICODE)
-_WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё\-]+", re.UNICODE)
+_TRIM_PUNCT = re.compile(r"^[^0-9A-Za-zА-Яа-яЁё-]+|[^0-9A-Za-zА-Яа-яЁё-]+$", re.UNICODE)
+_WORD_RE = re.compile(r"[0-9A-Za-zА-Яа-яЁё-]+", re.UNICODE)
 
 def _normalize_token(s: str) -> str:
     """Убираем запятые, точки, кавычки и прочие знаки по краям."""
@@ -66,9 +69,9 @@ def _similarity(a: str, b: str) -> float:
     return 1.0 - (_levenshtein(a or "", b or "") / m)
 
 
-# ============================
+# ============================ 
 # АУДИО ВЫРЕЗКА
-# ============================
+# ============================ 
 
 def _extract_wav_pcm(audio_path: str, start_cut: float, end_cut: float, pad: float = AUDIO_PAD_SEC) -> Tuple[str, float]:
     """
@@ -99,9 +102,9 @@ def _extract_wav_pcm(audio_path: str, start_cut: float, end_cut: float, pad: flo
     return chunk_path, ss
 
 
-# ============================
+# ============================ 
 # SNAP К РЕФЕРЕНСУ
-# ============================
+# ============================ 
 
 def _build_reference_tokens(transcript_segments: List[Dict[str, Any]], start_cut: float, end_cut: float) -> List[str]:
     """
@@ -141,9 +144,9 @@ def _snap_items_to_reference(items: List[Dict[str, Any]], reference_tokens: List
     return snapped
 
 
-# ============================
+# ============================ 
 # ПРЕОБРАЗОВАНИЕ СЕГМЕНТОВ В СЛОВА
-# ============================
+# ============================ 
 
 def _segments_to_word_items(segments,
                             window_start: float,
@@ -190,9 +193,9 @@ def _segments_to_word_items(segments,
     return items
 
 
-# ============================
+# ============================ 
 # PUBLIC: MOVIEPY РЕНДЕР
-# ============================
+# ============================ 
 
 def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, subtitle_style):
     """
@@ -233,9 +236,9 @@ def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, subtitle_style)
     return subtitle_clips
 
 
-# ============================
+# ============================ 
 # PUBLIC: ОСНОВНАЯ ФУНКЦИЯ
-# ============================
+# ============================ 
 
 def get_subtitle_items(subtitles_type: str,
                        transcript_segments: List[Dict[str, Any]],
@@ -276,7 +279,7 @@ def get_subtitle_items(subtitles_type: str,
         finally:
             try:
                 os.remove(chunk_path)
-            except Exception:
+            except Exception: 
                 pass
 
     else:  # 'phrases'

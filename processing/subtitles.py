@@ -7,8 +7,14 @@ from typing import List, Dict, Any, Tuple, Optional
 
 from moviepy.editor import TextClip
 from faster_whisper import WhisperModel
+from spellchecker import SpellChecker
 
 logger = logging.getLogger(__name__)
+
+spell = SpellChecker(language='ru')
+
+def _correct_word(word):
+    return spell.correction(word)
 
 # ============================
 # НАСТРОЙКИ (минимум логики)
@@ -162,6 +168,10 @@ def _segments_to_word_items(segments,
             if not text:
                 continue
 
+            corrected_text = _correct_word(text)
+            if not corrected_text:
+                continue
+
             s_abs = float(w.start) + offset_abs
             e_abs = float(w.end) + offset_abs
             if e_abs <= window_start or s_abs >= window_end:
@@ -173,7 +183,7 @@ def _segments_to_word_items(segments,
                 continue
 
             items.append({
-                "text": text,                          # БЕЗ пунктуации
+                "text": corrected_text,                          # БЕЗ пунктуации
                 "start": s_clip - window_start,        # относительный старт
                 "end": e_clip - window_start           # относительный конец
             })

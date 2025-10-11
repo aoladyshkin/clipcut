@@ -52,18 +52,18 @@ def temporary_directory(delete: bool = True):
 
 def download_media(url: str, out_dir: Path, audio_lang: str, lang: str):
     print("Скачиваем видео с YouTube...")
-    # try:
-    #     video_only = download_video_only(url, out_dir / "video_only.mp4")
-    #     audio_only = download_audio_only(url, out_dir / "audio_only.ogg", lang=audio_lang)
-    # except Exception as e:
-    #     raise Exception(get_translation(lang, "download_error")) from e
+    try:
+        video_only = download_video_only(url, out_dir / "video_only.mp4")
+        audio_only = download_audio_only(url, out_dir / "audio_only.ogg", lang=audio_lang)
+    except Exception as e:
+        raise Exception(get_translation(lang, "download_error")) from e
 
-    # if not video_only or not audio_only:
-    #     raise Exception(get_translation(lang, "download_error"))
+    if not video_only or not audio_only:
+        raise Exception(get_translation(lang, "download_error"))
     
-    # video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
-    video_full = out_dir / Path('video.mp4')
-    audio_only = out_dir / Path('audio_only.ogg')
+    video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
+    # video_full = out_dir / Path('video.mp4')
+    # audio_only = out_dir / Path('audio_only.ogg')
     return video_full, audio_only
 
 def transcribe_audio(url: str, out_dir: Path, audio_path: Path, force_whisper: bool):
@@ -105,7 +105,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-        out_dir = Path('output2')
+        # out_dir = Path('output2')
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
@@ -120,8 +120,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             return 0, 0
         
         shorts_number = config.get('shorts_number', 'auto')
-        shorts_timecodes = [{ "start": "00:03:19.0", "end": "00:03:32.0", "hook": '' }]
-        # shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
+        # shorts_timecodes = [{ "start": "00:03:19.0", "end": "00:03:32.0", "hook": '' }]
+        shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:
             if status_callback:
@@ -141,9 +141,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
         successful_sends = create_clips(config, video_full, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
 
-        # if os.path.exists(audio_only):
-        #     try: os.remove(audio_only)
-        #     except OSError: pass
+        if os.path.exists(audio_only):
+            try: os.remove(audio_only)
+            except OSError: pass
 
         return successful_sends, extra_found
 

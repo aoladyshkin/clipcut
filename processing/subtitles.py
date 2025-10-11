@@ -239,11 +239,11 @@ def create_ass_subtitles(items, ass_path, video_width, video_height,
 
     # Набор «теней» как в text-shadow: (bord, blur, alpha_outline)
     GLOW_LAYERS = [
-        (12, 20, 0x60),
-        (18, 30, 0x80),
-        (24, 40, 0xA0),
-        (32, 50, 0xC0),
-        (40, 60, 0xD0),
+        (10, 16, 0x60),
+        (14, 24, 0x80),
+        (19, 32, 0xA0),
+        (26, 40, 0xC0),
+        (32, 48, 0xD0)
     ]
 
     # Цвет текста для инлайна (\1c требует формат BGR, но через pysubs2 можно

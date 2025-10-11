@@ -5,7 +5,7 @@ import subprocess
 import logging
 from typing import List, Dict, Any, Tuple, Optional
 
-from moviepy.editor import TextClip
+import pysubs2
 from faster_whisper import WhisperModel
 from spellchecker import SpellChecker
 
@@ -194,46 +194,115 @@ def _segments_to_word_items(segments,
 
 
 # ============================ 
-# PUBLIC: MOVIEPY РЕНДЕР
+# PUBLIC: ASS РЕНДЕР
 # ============================ 
 
-def create_subtitle_clips(items, subtitle_y_pos, subtitle_width, subtitle_style):
-    """
-    Превращаем items в набор TextClip (тень + текст).
-    """
+def create_ass_subtitles(items, ass_path, video_width, video_height,
+                         subtitle_y_pos, subtitle_width,
+                         subtitle_style, subtitles_type):
+    import pysubs2
+    subs = pysubs2.SSAFile()
+    subs.info['PlayResX'] = video_width
+    subs.info['PlayResY'] = video_height
+    subs.info['WrapStyle'] = 1
+
     COLOR_MAP = {
-        'white': 'white',
-        'yellow': 'yellow',
-        'purple': '#E700FF',
-        'green': '#00FF00'
+        'white':  '&H00FFFFFF',
+        'yellow': '&H0000FFFF',
+        'purple': '&H00FF00E7',
+        'green':  '&H0000FF00'
     }
-    resolved_color = COLOR_MAP.get(subtitle_style, 'white')
+    c_str = COLOR_MAP.get(subtitle_style, '&H00FFFFFF').lstrip('&H')
+    if len(c_str) == 8:  # AABBGGRR
+        aa = int(c_str[0:2], 16); bb = int(c_str[2:4], 16); gg = int(c_str[4:6], 16); rr = int(c_str[6:8], 16)
+        primary = pysubs2.Color(rr, gg, bb, aa)
+    else:               # BBGGRR
+        bb = int(c_str[0:2], 16); gg = int(c_str[2:4], 16); rr = int(c_str[4:6], 16)
+        primary = pysubs2.Color(rr, gg, bb)
 
-    subtitle_clips = []
-    shadow_offset = 4
-    text_params = {
-        "fontsize": 42,
-        "font": TEXT_FONT,
-        "method": "caption",
-        "size": (subtitle_width, None)
-    }
-    for it in items:
-        txt = it["text"]
-        start_rel = it["start"]
-        end_rel = it["end"]
+    # Базовый стиль (макс. нейтральный — всё остальное зададим тэгами)
+    base = pysubs2.SSAStyle()
+    base.name = "Default"
+    base.fontname = "Montserrat Black"
+    base.fontsize = 42
+    base.bold = True
+    base.primarycolor = primary
+    base.secondarycolor = pysubs2.Color(255, 255, 255, 255)  # прозрачная
+    base.outlinecolor  = pysubs2.Color(0, 0, 0, 0)           # прозрачная (по умолчанию)
+    base.backcolor     = pysubs2.Color(0, 0, 0, 255)         # прозрачная тень
+    base.outline = 0
+    base.shadow  = 0
+    base.align = 2
+    base.marginl = base.marginr = (video_width - subtitle_width) // 2
+    base.marginv = 20
+    subs.styles["Default"] = base
 
-        temp = TextClip(txt, **text_params)
-        y_pos = subtitle_y_pos - temp.h / 2
+    # Набор «теней» как в text-shadow: (bord, blur, alpha_outline)
+    GLOW_LAYERS = [
+        (12, 20, 0x60),
+        (18, 30, 0x80),
+        (24, 40, 0xA0),
+        (32, 50, 0xC0),
+        (40, 60, 0xD0),
+    ]
 
-        shadow = (TextClip(txt, color="black", **text_params)
-                  .set_position(("center", y_pos + shadow_offset))
-                  .set_start(start_rel).set_end(end_rel))
-        text = (TextClip(txt, color=resolved_color, **text_params)
-                .set_position(("center", y_pos))
-                .set_start(start_rel).set_end(end_rel))
+    # Цвет текста для инлайна (\1c требует формат BGR, но через pysubs2 можно
+    # просто оставить в стиле — мы принудительно ставим \1a/\3a/\4a дальше).
+    def ass_color_bgr(c: pysubs2.Color):
+        # вернём строку вида &HBBGGRR&
+        return f"&H{c.b:02X}{c.g:02X}{c.r:02X}&"
 
-        subtitle_clips.extend([shadow, text])
-    return subtitle_clips
+    text_color_tag = f"\\1c{ass_color_bgr(primary)}"
+
+    for item in items:
+        start_ms = int(item['start'] * 1000)
+        end_ms   = int(item['end'] * 1000)
+        text     = item['text'].upper()
+
+        x_center = video_width / 2
+        pos_tag = rf"\an5\pos({x_center:.0f},{subtitle_y_pos:.0f})"
+
+        animation = ""
+        if subtitles_type == 'word-by-word':
+            animation = r"\t(0,100,1,\fscx120\fscy120)\t(100,200,1,\fscx95\fscy95)\t(200,300,1,\fscx100\fscy100)"
+
+        common = f"{pos_tag}{animation}"
+
+        # ----- GLOW-слои: виден только контур (чёрный), всё остальное прозрачно -----
+        # Убиваем заливку/secondary/back на уровне тэгов:
+        # \1a - primary alpha, \2a - secondary alpha, \3a - outline alpha, \4a - shadow/back alpha
+        for layer_idx, (bord, blur, a_out) in enumerate(GLOW_LAYERS):
+            glow_text = (
+                "{"
+                f"{common}"
+                rf"\bord{bord}\blur{blur}\xshad0\yshad0"
+                r"\1a&HFF&\2a&HFF&"            # fill и secondary полностью прозрачны
+                fr"\3a&H{a_out:02X}&\3c&H000000&"  # контур чёрный с заданной альфой
+                r"\4a&HFF&"                    # back/shadow тоже прозрачен
+                "}"
+                + text
+            )
+            subs.append(pysubs2.SSAEvent(start=start_ms, end=end_ms,
+                                         text=glow_text, style="Default", layer=layer_idx))
+
+        # ----- Основной текст: видна только заливка (фиолетовый), без контура/тени -----
+        main_text = (
+            "{"
+            f"{common}"
+            r"\bord0\shad0\blur0\xshad0\yshad0"
+            + text_color_tag +
+            r"\1a&H00&\2a&HFF&\3a&HFF&\4a&HFF&"   # fill видимая, всё остальное прозрачно
+            "}"
+            + text
+        )
+        subs.append(pysubs2.SSAEvent(start=start_ms, end=end_ms,
+                                     text=main_text, style="Default", layer=len(GLOW_LAYERS)+1))
+
+    subs.save(ass_path)
+    return ass_path
+
+
+
 
 
 # ============================ 

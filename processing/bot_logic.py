@@ -16,7 +16,7 @@ from moviepy.editor import (
 import json
 from faster_whisper import WhisperModel
 from processing.transcription import get_transcript_segments_and_file, get_audio_duration
-from processing.subtitles import create_subtitle_clips, get_subtitle_items
+from processing.subtitles import create_ass_subtitles, get_subtitle_items
 from config import VIDEO_MAP
 from .download import download_video_only, download_audio_only
 from .layouts import _build_video_canvas
@@ -52,18 +52,18 @@ def temporary_directory(delete: bool = True):
 
 def download_media(url: str, out_dir: Path, audio_lang: str, lang: str):
     print("Скачиваем видео с YouTube...")
-    try:
-        video_only = download_video_only(url, out_dir / "video_only.mp4")
-        audio_only = download_audio_only(url, out_dir / "audio_only.ogg", lang=audio_lang)
-    except Exception as e:
-        raise Exception(get_translation(lang, "download_error")) from e
+    # try:
+    #     video_only = download_video_only(url, out_dir / "video_only.mp4")
+    #     audio_only = download_audio_only(url, out_dir / "audio_only.ogg", lang=audio_lang)
+    # except Exception as e:
+    #     raise Exception(get_translation(lang, "download_error")) from e
 
-    if not video_only or not audio_only:
-        raise Exception(get_translation(lang, "download_error"))
+    # if not video_only or not audio_only:
+    #     raise Exception(get_translation(lang, "download_error"))
     
-    video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
-    # video_full = out_dir / Path('video.mp4')
-    # audio_only = out_dir / Path('audio_only.ogg')
+    # video_full = merge_video_audio(video_only, audio_only, out_dir / "video.mp4")
+    video_full = out_dir / Path('video.mp4')
+    audio_only = out_dir / Path('audio_only.ogg')
     return video_full, audio_only
 
 def transcribe_audio(url: str, out_dir: Path, audio_path: Path, force_whisper: bool):
@@ -105,7 +105,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-        # out_dir = Path('output2')
+        out_dir = Path('output2')
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
@@ -120,8 +120,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             return 0, 0
         
         shorts_number = config.get('shorts_number', 'auto')
-        # shorts_timecodes = [{ "start": "00:03:19.0", "end": "00:04:02.0", "hook": '' }]
-        shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
+        shorts_timecodes = [{ "start": "00:03:19.0", "end": "00:03:32.0", "hook": '' }]
+        # shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:
             if status_callback:
@@ -141,9 +141,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
         successful_sends = create_clips(config, video_full, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
 
-        if os.path.exists(audio_only):
-            try: os.remove(audio_only)
-            except OSError: pass
+        # if os.path.exists(audio_only):
+        #     try: os.remove(audio_only)
+        #     except OSError: pass
 
         return successful_sends, extra_found
 
@@ -214,15 +214,26 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
             config, main_clip_raw, final_width, final_height
         )
 
+        final_clip = video_canvas
+        ass_path = None
         if subtitles_type != 'no_subtitles':
-            # --- Создание и наложение субтитров ---
+            # --- Создание субтитров ---
             subtitle_items = get_subtitle_items(
                 subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
                 faster_whisper_model)
-            subtitle_clips = create_subtitle_clips(subtitle_items, subtitle_y_pos, subtitle_width, config.get('subtitle_style', 'white'))
-            final_clip = CompositeVideoClip([video_canvas] + subtitle_clips)
-        else:
-            final_clip = video_canvas
+            
+            ass_path = out_dir / f"short{i}.ass"
+            create_ass_subtitles(
+                subtitle_items, 
+                str(ass_path),
+                final_width,
+                final_height,
+                subtitle_y_pos, 
+                subtitle_width, 
+                config.get('subtitle_style', 'white'),
+                subtitles_type
+            )
+
         if config.get('add_banner'):
             banner_path = 'banner.png'
             if os.path.exists(banner_path):
@@ -235,7 +246,44 @@ def process_video_clips(config, video_path, audio_path, shorts_timecodes, transc
                 logger.warning(f"Banner file not found at {banner_path}")
 
         final_clip = final_clip.set_duration(video_canvas.duration)
-        final_clip.write_videofile(str(output_sub), fps=24, codec="libx264", audio_codec="aac")
+
+        # If there are subtitles, we need to burn them using ffmpeg directly
+        if ass_path and os.path.exists(ass_path):
+            temp_video_path = out_dir / f"temp_short{i}.mp4"
+            final_clip.write_videofile(str(temp_video_path), fps=24, codec="libx264", audio_codec="aac")
+
+            fonts_dir = "fonts" # Relative path to fonts dir
+            
+            ffmpeg_vf = f"subtitles={str(ass_path)}:fontsdir={fonts_dir}"
+
+            cmd = [
+                "ffmpeg",
+                "-i", str(temp_video_path),
+                "-vf", ffmpeg_vf,
+                "-c:v", "libx264", # re-encoding is necessary
+                "-preset", "medium",
+                "-crf", "23",
+                "-c:a", "copy",
+                "-y", str(output_sub)
+            ]
+            
+            try:
+                # Using subprocess.run to wait for completion
+                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                print(f"Error burning subtitles with ffmpeg: {e.stderr}")
+                # As a fallback, just copy the non-subtitled video
+                shutil.copy(temp_video_path, output_sub)
+            finally:
+                # Clean up temporary files
+                if os.path.exists(temp_video_path):
+                    os.remove(temp_video_path)
+                if os.path.exists(ass_path):
+                    os.remove(ass_path)
+        else:
+            # No subtitles, just write the file
+            final_clip.write_videofile(str(output_sub), fps=24, codec="libx264", audio_codec="aac")
+        
         print(f"✅ Создан файл {output_sub}")
         
         # Call the callback to send the video

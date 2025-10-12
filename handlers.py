@@ -829,7 +829,9 @@ async def get_crypto_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         await update.message.reply_text(
             get_translation(lang, "you_are_buying_n_shorts_for_m_usdt").format(amount=amount, total_price=total_price),
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            parse_mode="HTML",
+            disable_web_page_preview=True
         )
         
         return CRYPTO_PAYMENT

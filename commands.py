@@ -80,7 +80,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     base_commands = [
         BotCommand(command="start", description=get_translation(lang, "generate_video_button")),
         BotCommand(command="menu", description=get_translation(lang, "help_description")),
-        BotCommand(command="balance", description=get_translation(lang, "balance_description")),
         BotCommand(command="topup", description=get_translation(lang, "topup_description")),
         BotCommand(command="referral", description=get_translation(lang, "referral_description")),
         BotCommand(command="feedback", description=get_translation(lang, "feedback_description")),
@@ -168,12 +167,6 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         [InlineKeyboardButton(get_translation(lang, "how_it_works_button"), url=TUTORIAL_LINK)]
     ])
     await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
-
-async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Отправляет текущий баланс пользователя."""
-    user_id = update.effective_user.id
-    _, balance, _, lang, _ = get_user(user_id)
-    await update.message.reply_text(get_translation(lang, "balance_message").format(balance=balance))
 
 from pricing import get_package_prices
 

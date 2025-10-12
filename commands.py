@@ -185,6 +185,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     
     user_id = update.effective_user.id
     _, _, _, lang, _ = get_user(user_id)
+    log_event(user_id, 'topup_start', {})
 
     discount_active = context.bot_data.get('discount_active', False)
     discount_end_time = context.bot_data.get('discount_end_time')
@@ -203,7 +204,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             stars = package['stars']
             usdt = package['usdt']
             if package['highlight']:
-                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub) + " 🔥" 
+                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub) + " 🔥"
             else:
                 button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
@@ -216,7 +217,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             stars = package['stars']
             usdt = package['usdt']
             if package['highlight']:
-                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub) + " 🔥" 
+                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub) + " 🔥"
             else:
                 button_text = get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub)
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')

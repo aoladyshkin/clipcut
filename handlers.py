@@ -668,6 +668,7 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     usdt = float(package_data[5])
 
     context.user_data['topup_package'] = {'shorts': shorts, 'rub': rub, 'stars': stars, 'usdt': usdt}
+    log_event(user_id, 'topup_package_selected', {'package': context.user_data['topup_package']})
 
     keyboard = [
         [
@@ -689,11 +690,13 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     """Sends an invoice for the selected package using Telegram Stars."""
     query = update.callback_query
     await query.answer()
-    await query.delete_message()
     
     user_id = query.from_user.id
     _, _, _, lang, _ = get_user(user_id)
+    log_event(user_id, 'topup_method_selected', {'method': 'telegram_stars'})
 
+    await query.delete_message()
+    
     package = context.user_data.get('topup_package')
     if not package:
         await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
@@ -726,6 +729,7 @@ async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await query.answer()
     user_id = query.from_user.id
     _, _, _, lang, _ = get_user(user_id)
+    log_event(user_id, 'topup_method_selected', {'method': 'cryptobot'})
 
     package = context.user_data.get('topup_package')
     if not package:

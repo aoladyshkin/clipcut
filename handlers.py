@@ -118,8 +118,15 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await update.message.reply_text(get_translation(lang, "send_correct_youtube_link"))
         return GET_URL
 
+    # Send a "checking" message
+    checking_message = await update.message.reply_text(get_translation(lang, "checking_video_availability"))
+
     # Check video availability
     is_available, message, err = check_video_availability(url, lang)
+
+    # Delete the "checking" message
+    await checking_message.delete()
+
     if not is_available:
         await update.message.reply_text(message)
         log_event(

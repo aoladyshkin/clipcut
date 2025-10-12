@@ -70,7 +70,7 @@
     "back_button": "⬅️ Back",
     "enter_shorts_amount_to_buy": "Enter the amount of shorts you want to buy:",
     "please_enter_integer": "Please enter an integer.",
-    "you_are_buying_n_shorts_for_m_usdt": "You are buying {amount} shorts for {total_price} USDT. Press the button below to pay.",
+    "you_are_buying_n_shorts_for_m_usdt": "You are buying {amount} shorts for {total_price} USDT via @CryptoBot. Press the button below to pay.\n\n<a href='https://zdeszadroti.ru/forum/topic?id=529'>How to top up CryptoBot (choose USDT for topup)</a>",
     "pay_button": "Pay",
     "check_payment_button": "Check payment",
     "payment_successful_balance_updated": "💸 Payment successful!\nYour balance has been topped up with {amount} shorts.\n\nNew balance: <b>{new_balance} shorts.</b>",

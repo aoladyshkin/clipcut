@@ -80,7 +80,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     base_commands = [
         BotCommand(command="start", description=get_translation(lang, "generate_video_button")),
         BotCommand(command="menu", description=get_translation(lang, "help_description")),
-        BotCommand(command="balance", description=get_translation(lang, "balance_description")),
         BotCommand(command="topup", description=get_translation(lang, "topup_description")),
         BotCommand(command="referral", description=get_translation(lang, "referral_description")),
         BotCommand(command="feedback", description=get_translation(lang, "feedback_description")),
@@ -169,12 +168,6 @@ async def menu_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     ])
     await update.message.reply_text(help_text, reply_markup=reply_markup, parse_mode="HTML", disable_web_page_preview=True)
 
-async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Отправляет текущий баланс пользователя."""
-    user_id = update.effective_user.id
-    _, balance, _, lang, _ = get_user(user_id)
-    await update.message.reply_text(get_translation(lang, "balance_message").format(balance=balance))
-
 from pricing import get_package_prices
 
 async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -186,6 +179,9 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     user_id = update.effective_user.id
     _, _, _, lang, _ = get_user(user_id)
     log_event(user_id, 'topup_start', {})
+
+    bot_username = context.bot.username
+    referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
 
     discount_active = context.bot_data.get('discount_active', False)
     discount_end_time = context.bot_data.get('discount_end_time')
@@ -223,13 +219,15 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     
+    message_text += "\n\n" + get_translation(lang, "referral_message").format(referral_link=referral_link)
+
     keyboard.append([InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='cancel_topup')])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if query:
-        await query.edit_message_text(message_text, reply_markup=reply_markup)
+        await query.edit_message_text(message_text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await update.message.reply_text(message_text, reply_markup=reply_markup)
+        await update.message.reply_text(message_text, reply_markup=reply_markup, parse_mode="Markdown")
         
     return GET_TOPUP_PACKAGE
 

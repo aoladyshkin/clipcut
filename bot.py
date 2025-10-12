@@ -10,7 +10,7 @@ import telegram.error
 
 from conversation import get_conv_handler
 from commands import (
-    menu_command, balance_command, add_shorts_command, set_user_balance_command, 
+    menu_command, add_shorts_command, set_user_balance_command, 
     start_discount, end_discount, referral_command, remove_user_command, 
     export_users_command, lang_command, set_language
 )
@@ -314,7 +314,6 @@ def main():
     conv_handler = get_conv_handler()
 
     application.add_handler(CommandHandler("menu", menu_command))
-    application.add_handler(CommandHandler("balance", balance_command))
     application.add_handler(CommandHandler("referral", referral_command))
     application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(conv_handler)

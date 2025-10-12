@@ -98,19 +98,34 @@ def _is_non_speech(text: str) -> bool:
     return (not t) or _MUSIC_RE.match(t) or _BRACKETED_RE.match(t)
 
 # =========================
-# XML -> СЕГМЕНТЫ
+# SRT -> СЕГМЕНТЫ
 # =========================
-def _xml_to_segments(xml_text: str) -> List[Dict[str, float]]:
-    root = ET.fromstring(xml_text)
+def _srt_time_to_seconds(time_str):
+    parts = time_str.split(',')
+    h, m, s = map(int, parts[0].split(':'))
+    ms = int(parts[1])
+    return h * 3600 + m * 60 + s + ms / 1000
+
+def _srt_to_segments(srt_text: str) -> List[Dict[str, float]]:
     segs: List[Dict[str, float]] = []
-    for node in root.iter("text"):
-        start = float(node.attrib.get("start", "0"))
-        dur = float(node.attrib.get("dur", "0"))
-        end = start + dur
-        raw = "".join(node.itertext())
-        text = html.unescape(raw).replace("\n", " ").strip()
-        if text and not _is_non_speech(text):
-            segs.append({"start": start, "end": end, "text": text})
+    for block in srt_text.strip().split('\n\n'):
+        lines = block.split('\n')
+        if len(lines) >= 3:
+            time_line = lines[1]
+            text_lines = lines[2:]
+            
+            try:
+                start_str, end_str = time_line.split(' --> ')
+                start = _srt_time_to_seconds(start_str)
+                end = _srt_time_to_seconds(end_str)
+                
+                text = " ".join(text_lines).strip()
+                if text and not _is_non_speech(text):
+                    segs.append({"start": start, "end": end, "text": text})
+            except ValueError:
+                # Пропускаем невалидные блоки, если что-то пошло не так с разбором
+                print(f"Не удалось разобрать SRT-блок: {block}")
+                continue
     return segs
 
 # =========================
@@ -126,7 +141,7 @@ def _clean_segment_text(text: str) -> str:
     # Этот регекс заменяет любой символ, который НЕ является буквой, цифрой,
     # пробелом или одним из разрешенных знаков препинания (.,!?), на пустую строку.
     # Это также решает проблему с ">> ".
-    cleaned_text = re.sub(r'[^a-zA-Zа-яА-Я0-9\s.,!?]', '', text)
+    cleaned_text = re.sub(r'[^\w\s.,!?]', '', text)
     return cleaned_text.strip()
 
 
@@ -237,8 +252,8 @@ def download_captions_from_youtube(url: str) -> Tuple[List[Dict[str, float]], Op
         raise RuntimeError(f"Подходящая дорожка не найдена. Доступные: "
                            f"{[_c for _c, _ in _caption_pairs(yt.captions)]}")
 
-    xml_text = cap.xml_captions
-    segs = _xml_to_segments(xml_text)
+    srt_text = cap.generate_srt_captions()
+    segs = _srt_to_segments(srt_text)
     if not segs:
         raise RuntimeError("Получены пустые субтитры после фильтрации ремарок.")
     return segs, chosen_code

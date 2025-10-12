@@ -6,10 +6,11 @@ from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language
 from analytics import log_event
-from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE
 from config import TUTORIAL_LINK, ADMIN_USER_IDS
 from datetime import datetime, timezone
 from localization import get_translation
+from pricing import get_package_prices
 
 import csv
 import io
@@ -174,25 +175,63 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     _, balance, _, lang, _ = get_user(user_id)
     await update.message.reply_text(get_translation(lang, "balance_message").format(balance=balance))
 
+from pricing import get_package_prices
+
 async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Starts the top-up process."""
+    """Shows the available packages for top-up with prices in RUB."""
+    query = update.callback_query
+    if query:
+        await query.answer()
+    
     user_id = update.effective_user.id
     _, _, _, lang, _ = get_user(user_id)
-    keyboard = [
-        [
-            InlineKeyboardButton("⭐️ Telegram Stars", callback_data='topup_stars'),
-            InlineKeyboardButton("💎 CryptoBot", callback_data='topup_crypto'),
-        ],
-        [InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='cancel_topup')]
-    ]
+    log_event(user_id, 'topup_start', {})
+
+    discount_active = context.bot_data.get('discount_active', False)
+    discount_end_time = context.bot_data.get('discount_end_time')
+
+    is_discount_time = discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time
+
+    packages = get_package_prices(discount_active=is_discount_time)
+    
+    keyboard = []
+    if is_discount_time:
+        message_text = get_translation(lang, "topup_package_prompt_discount")
+        for package in packages:
+            shorts = package['shorts']
+            rub = package['rub']
+            original_rub = package['original_rub']
+            stars = package['stars']
+            usdt = package['usdt']
+            if package['highlight']:
+                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub) + " 🔥"
+            else:
+                button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
+            keyboard.append([button])
+    else:
+        message_text = get_translation(lang, "topup_package_prompt")
+        for package in packages:
+            shorts = package['shorts']
+            rub = package['rub']
+            stars = package['stars']
+            usdt = package['usdt']
+            if package['highlight']:
+                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub) + " 🔥"
+            else:
+                button_text = get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub)
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
+            keyboard.append([button])
+    
+    keyboard.append([InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='cancel_topup')])
     reply_markup = InlineKeyboardMarkup(keyboard)
-    message_text = get_translation(lang, "topup_prompt")
-    if update.callback_query:
-        await update.callback_query.answer()
-        await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup)
+    
+    if query:
+        await query.edit_message_text(message_text, reply_markup=reply_markup)
     else:
         await update.message.reply_text(message_text, reply_markup=reply_markup)
-    return GET_TOPUP_METHOD
+        
+    return GET_TOPUP_PACKAGE
 
 async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Adds a specified amount of shorts to a user's balance."""

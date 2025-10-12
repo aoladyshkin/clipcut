@@ -15,9 +15,8 @@ from handlers import (
     topup_stars,
     topup_crypto,
     cancel_topup,
-    send_invoice_for_stars,
-    get_crypto_amount,
-    back_to_topup_method,
+    select_topup_package,
+    back_to_package_selection,
     check_crypto_payment,
     handle_rating,
     handle_feedback,
@@ -97,24 +96,19 @@ def get_conv_handler():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_feedback),
                 CallbackQueryHandler(skip_feedback, pattern='^skip_feedback$')
             ],
+            GET_TOPUP_PACKAGE: [
+                CallbackQueryHandler(select_topup_package, pattern='^topup_package_'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
             GET_TOPUP_METHOD: [
                 CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),
                 CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
-            ],
-            GET_TOPUP_PACKAGE: [
-                CallbackQueryHandler(send_invoice_for_stars, pattern='^topup_\d+_\d+$'),
-                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
-            ],
-            GET_CRYPTO_AMOUNT: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, get_crypto_amount),
-                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method$'),
+                CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             CRYPTO_PAYMENT: [
                 CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'),
-                CallbackQueryHandler(back_to_topup_method, pattern='^back_to_topup_method$'),
+                CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],

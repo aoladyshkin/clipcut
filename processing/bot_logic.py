@@ -115,7 +115,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         force_ai_transcription = config.get('force_ai_transcription', False)
         # transcript_segments = []
         transcript_segments, lang_code = transcribe_audio(url, out_dir, audio_only, force_ai_transcription)
-
+        
         if not transcript_segments:
             return 0, 0
         

@@ -38,11 +38,11 @@ DISCOUNT_PRICES = {
         {"shorts": 1, "stars": 47},
         {"shorts": 3, "stars": 134},
         {"shorts": 5, "stars": 209},
-        {"shorts": 10, "stars": 399},
-        {"shorts": 25, "stars": 949},
+        {"shorts": 10, "stars": 389},
+        {"shorts": 25, "stars": 849},
         {"shorts": 50, "stars": 1399},
         {"shorts": 70, "stars": 1679},
-        {"shorts": 100, "stars": 1999},
+        {"shorts": 100, "stars": 1899},
     ]
 }
 

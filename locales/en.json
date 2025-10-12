@@ -85,7 +85,7 @@
     "user_rated": "User {user_id} gave a rating: {rating}",
     "send_feedback_prompt": "Send your feedback text. To cancel - /cancel",
     "n_shorts_button": "{shorts} shorts for {stars} ⭐️",
-    "n_shorts_discount_button": "{shorts} shorts - ~{old_price}~ {new_price} ⭐️",
+    "n_shorts_discount_button": "{shorts} shorts: {old_price} → {new_price} ⭐️",
     "topup_stars_discount_prompt": "Choose a package to top up with Telegram Stars (discount active!):",
     "topup_stars_prompt": "Choose a package to top up with Telegram Stars:",
     "buy_stars_prompt": "\n\nYou can buy Stars inside Telegram or top them up via @PremiumBot.",

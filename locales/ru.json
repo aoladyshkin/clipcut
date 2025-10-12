@@ -85,7 +85,7 @@
     "user_rated": "Пользователь {user_id} поставил оценку: {rating}",
     "send_feedback_prompt": "Отправьте текст вашего отзыва. Для отмены - /cancel",
     "n_shorts_button": "{shorts} шортсов за {stars} ⭐️",
-    "n_shorts_discount_button": "{shorts} шортсов - ~{old_price}~ {new_price} ⭐️",
+    "n_shorts_discount_button": "{shorts} шортсов: {old_price} → {new_price} ⭐️",
     "topup_stars_discount_prompt": "Выберите пакет для пополнения через Telegram Stars (действует скидка!):",
     "topup_stars_prompt": "Выберите пакет для пополнения через Telegram Stars:",
     "buy_stars_prompt": "\n\nВы можете купить Stars внутри Telegram или пополнить их через @PremiumBot.",

@@ -5,14 +5,14 @@ RUB_TO_STARS_RATE = 100/180  # 100 Stars = 180 RUB
 
 
 PACKAGES = [
-    {"shorts": 1, "rub": 49, "discount_rub": 39},
-    {"shorts": 3, "rub": 139, "discount_rub": 109},
-    {"shorts": 5, "rub": 219, "discount_rub": 169},
-    {"shorts": 10, "rub": 409, "discount_rub": 319},
-    {"shorts": 25, "rub": 949, "discount_rub": 739},
-    {"shorts": 50, "rub": 1790, "discount_rub": 1390},
-    {"shorts": 70, "rub": 2290, "discount_rub": 1690},
-    {"shorts": 100, "rub": 2990, "discount_rub": 1990},
+    {"shorts": 1, "rub": 49, "discount_rub": 39, "highlight": False},
+    {"shorts": 3, "rub": 139, "discount_rub": 109, "highlight": False},
+    {"shorts": 5, "rub": 219, "discount_rub": 169, "highlight": False},
+    {"shorts": 10, "rub": 409, "discount_rub": 319, "highlight": False},
+    {"shorts": 25, "rub": 949, "discount_rub": 739, "highlight": True},
+    {"shorts": 50, "rub": 1790, "discount_rub": 1390, "highlight": False},
+    {"shorts": 70, "rub": 2290, "discount_rub": 1690, "highlight": False},
+    {"shorts": 100, "rub": 2990, "discount_rub": 1990, "highlight": False},
 ]
 
 def get_package_prices(discount_active: bool = False) -> list:
@@ -26,7 +26,8 @@ def get_package_prices(discount_active: bool = False) -> list:
             "rub": rub_price,
             "usdt": round(rub_price * RUB_TO_USDT_RATE, 2),
             "stars": int(rub_price * RUB_TO_STARS_RATE),
-            "original_rub": pkg["rub"]
+            "original_rub": pkg["rub"],
+            "highlight": pkg.get("highlight", False)
         })
     return prices
 

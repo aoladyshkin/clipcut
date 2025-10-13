@@ -34,15 +34,16 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
     timestamps = np.arange(0, main_clip_resized.duration, 1/processing_fps)
     face_boxes = []
     tracked_face_box = None
+    frames_without_good_match = 0
 
     for t in timestamps:
         frame = main_clip_resized.get_frame(t)
         gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
         
-        faces_frontal = face_cascade.detectMultiScale(gray, 1.1, 6, minSize=(100, 100))
-        faces_profile = profile_cascade.detectMultiScale(gray, 1.1, 6, minSize=(100, 100))
+        faces_frontal = face_cascade.detectMultiScale(gray, 1.1, 8, minSize=(100, 100))
+        faces_profile = profile_cascade.detectMultiScale(gray, 1.1, 8, minSize=(100, 100))
         gray_flipped = cv2.flip(gray, 1)
-        faces_profile_flipped = profile_cascade.detectMultiScale(gray_flipped, 1.1, 6, minSize=(100, 100))
+        faces_profile_flipped = profile_cascade.detectMultiScale(gray_flipped, 1.1, 8, minSize=(100, 100))
         
         all_faces = []
         if len(faces_frontal) > 0: all_faces.extend(list(faces_frontal))
@@ -83,22 +84,47 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
         elif len(faces) > 0:
             # Fallback to original single-face tracking logic
             if tracked_face_box is None:
+                # No face was tracked before, pick the biggest one
                 tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+                current_face_box = tracked_face_box
+                frames_without_good_match = 0
             else:
                 previous_center = get_box_center(tracked_face_box)
+                previous_width = tracked_face_box[2]
+                
                 closest_face = min(faces, key=lambda f: distance(get_box_center(f), previous_center))
-                max_allowed_distance = tracked_face_box[2] * 1.5
-                if distance(get_box_center(closest_face), previous_center) < max_allowed_distance:
+                
+                dist = distance(get_box_center(closest_face), previous_center)
+                max_allowed_distance = previous_width * 1.5
+                
+                closest_width = closest_face[2]
+                # Avoid division by zero if width is 0
+                width_ratio = closest_width / previous_width if previous_width > 0 else 0
+
+                # Check for a good match: distance is small and size is similar
+                if dist < max_allowed_distance and 0.3 < width_ratio < 2.0:
+                    # It's a good match, update the tracker
                     tracked_face_box = closest_face
-                # else:
-                #     # If the closest face is too far, we assume it's a false positive
-                #     # and we don't update the tracker. The interpolation logic will hold
-                #     # the last known position.
-                #     tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
-            current_face_box = tracked_face_box
+                    current_face_box = tracked_face_box
+                    frames_without_good_match = 0
+                else:
+                    # It's a bad match (false positive or face lost).
+                    frames_without_good_match += 1
+                    
+                    # If face is lost for too long, reset the tracker to re-acquire.
+                    if frames_without_good_match > 15: # ~1 second
+                        tracked_face_box = None
+                        current_face_box = None
+                    else:
+                        # If face is lost for a short time, just hold the position.
+                        current_face_box = None
+                        # And keep the old tracked_face_box in memory
         else:
             # No faces detected
-            tracked_face_box = None
+            frames_without_good_match += 1
+            if frames_without_good_match > 15:
+                 tracked_face_box = None
+            current_face_box = None
         
         face_boxes.append(current_face_box)
 

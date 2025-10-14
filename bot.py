@@ -14,7 +14,7 @@ from commands import (
     start_discount, end_discount, referral_command, remove_user_command, 
     export_users_command, lang_command, set_language
 )
-from handlers import precheckout_callback, successful_payment_callback
+from handlers import precheckout_callback, successful_payment_callback, handle_dislike_button, handle_moderation_button
 from processing.bot_logic import main as process_video
 from states import RATING, GET_LANGUAGE
 from analytics import init_analytics_db, log_event
@@ -80,6 +80,11 @@ async def send_status_update(bot: Bot, chat_id: int, text: str, status_message_i
 
 async def send_video(bot: Bot, chat_id: int, file_path: str, caption: str, edit_message_id: int, forward_group_id: str = None, generation_id: str = None):
     try:
+        _, _, _, lang, _ = get_user(chat_id)
+        dislike_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(get_translation(lang, "dislike_button"), callback_data='dislike')]
+        ])
+
         with open(file_path, 'rb') as video_file:
             message = await bot.send_video(
                 chat_id=chat_id,
@@ -91,7 +96,8 @@ async def send_video(bot: Bot, chat_id: int, file_path: str, caption: str, edit_
                 supports_streaming=True,
                 read_timeout=600,
                 write_timeout=600,
-                reply_to_message_id=edit_message_id
+                reply_to_message_id=edit_message_id,
+                reply_markup=dislike_keyboard
             )
 
         if forward_group_id:
@@ -326,6 +332,8 @@ def main():
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
     application.add_handler(CallbackQueryHandler(set_language, pattern='^set_lang_'))
+    application.add_handler(CallbackQueryHandler(handle_dislike_button, pattern='^dislike$'))
+    application.add_handler(CallbackQueryHandler(handle_moderation_button, pattern='^moderate_'))
 
     logger.info("Бот запущен и готов к работе...")
     application.run_polling()

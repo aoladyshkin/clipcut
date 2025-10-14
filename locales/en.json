@@ -126,5 +126,12 @@
     "yes_track_face": "Yes, track",
     "no_track_face": "No, keep centered",
     "subtitles_not_found": "The video has no subtitles. Please select another video.",
-    "checking_video_availability": "⏳ Checking video availability..."
+    "checking_video_availability": "⏳ Checking video availability...",
+    "dislike_button": "Problem with video?",
+    "dislike_received": "Thank you for your feedback. We will review the video.",
+    "moderation_bad": "Bad",
+    "moderation_good": "Good",
+    "moderation_refund": "A problem was found with one of the videos. 1 short has been returned to your balance.",
+    "moderation_no_problem": "We reviewed the video you reported and found no issues. If you disagree, please contact support.",
+    "moderation_completed": "Moderation completed."
 }

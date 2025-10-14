@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*- 
 
 import os
+import re
 import json
 import time
 import logging
@@ -24,9 +25,14 @@ def gpt_gpt_prompt(shorts_number):
 
 Длина каждого клипа: от 00:10 до 01:00.
 Оптимальная длина: 20–45 секунд.
-Ни один клип не должен обрываться на середине мысли или предложения.
 Клип должен быть понятен без контекста всего интервью.
 Если потенциальный клип получился <10 секунд, обязательно расширь его за счёт соседних реплик (вперёд или назад), сохранив смысловую цельность.
+
+КРИТИЧЕСКИ ВАЖНО:
+1.  **Не обрывай мысль.** Клип должен заканчиваться на точке, вопросительном или восклицательном знаке. Не обрывай клип на полуслове или на союзе «и», «но», «потому что» и т.д.
+    *   ❌ **ПЛОХОЙ ПРИМЕР:** Клип обрывается на фразе "...и поэтому я решил, что...", не закончив мысль.
+    *   ✅ **ХОРОШИЙ ПРИМЕР:** Клип заканчивается на полной фразе "...и поэтому я решил, что это был лучший день в моей жизни."
+2.  **Строго соблюдай длительность.** Минимальная длина — 10 секунд, максимальная — 60 секунд. Клипы за пределами этого диапазона будут отброшены.
 
 Приоритет отбора:
 Эмоции — смех, шутки, сарказм, конфликты, признания.
@@ -45,6 +51,24 @@ def gpt_gpt_prompt(shorts_number):
 Убедись, что каждый клип дольше 10 секунд.
 ''')
     return prompt
+
+def _parse_captions(captions_path: str):
+    """Парсит файл субтитров в список сегментов."""
+    with open(captions_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    segments = []
+    # Regex to find timestamps and text, including multi-line text
+    pattern = re.compile(r'(\d+\.\d+) --> (\d+\.\d+)\n(.*?)(?=\n\d+\.\d+ -->|\Z)', re.DOTALL)
+    matches = pattern.findall(content)
+    
+    for match in matches:
+        start_time = float(match[0])
+        end_time = float(match[1])
+        text = match[2].strip()
+        segments.append({'start': start_time, 'end': end_time, 'text': text})
+        
+    return segments
 
 def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
@@ -74,24 +98,64 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     resp = client.responses.create(
         model="gpt-5",
         input=[{"role": "user", "content": prompt}],
-        tools=[{
-            "type": "file_search",
-            "vector_store_ids": [vs.id],
-        }],
+        tools=[
+            {
+                "type": "file_search",
+                "vector_store_ids": [vs.id],
+            }
+        ],
     )
 
     raw = _response_text(resp)
     json_str = _extract_json_array(raw)
     data = json.loads(json_str)
 
-    # как и раньше: SS.S -> HH:MM:SS.S, +0.5 сек к end
-    items = [{
-        "start": format_seconds_to_hhmmss(float(it["start"])),
-        "end":   format_seconds_to_hhmmss(float(it["end"])),
-        "hook":  it["hook"]
-    } for it in data]
+    # --- Post-processing --- 
+    caption_segments = _parse_captions(captions_path)
+    processed_data = []
 
-    return items
+    for it in data:
+        start_time = float(it["start"])
+        end_time = float(it["end"])
+
+        # 1. Enforce 60-second limit
+        if end_time - start_time > 60.0:
+            end_time = start_time + 60.0
+            logger.info(f"обрезаю клип до 60 секунд: {it['hook']}")
+
+        # 2. Adjust end time to the end of a sentence
+        # Find the segment where the clip ends
+        end_segment_index = -1
+        for i, seg in enumerate(caption_segments):
+            if seg['start'] <= end_time < seg['end']:
+                end_segment_index = i
+                break
+        
+        if end_segment_index != -1:
+            # Check current and next few segments for a sentence end
+            search_text = ""
+            last_segment_end_time = end_time
+            for i in range(end_segment_index, min(end_segment_index + 5, len(caption_segments))):
+                segment = caption_segments[i]
+                search_text += segment['text'] + " "
+                last_segment_end_time = segment['end']
+                
+                # If we find a sentence end, and it's within a reasonable threshold
+                if any(p in segment['text'] for p in '.!?'):
+                    new_end_time = segment['end']
+                    if new_end_time - end_time < 5.0: # 5-second threshold
+                        end_time = new_end_time
+                        logger.info(f"корректирую окончание клипа по предложению: {it['hook']}")
+                        break
+
+    
+        processed_data.append({
+            "start": format_seconds_to_hhmmss(start_time),
+            "end":   format_seconds_to_hhmmss(end_time),
+            "hook":  it["hook"]
+        })
+
+    return processed_data
 
 def _wait_vector_store_ready(vector_store_id: str, timeout_s: int = 30, poll_s: float = 1.0):
     """
@@ -166,4 +230,5 @@ def _extract_json_array(text: str) -> str:
                 if depth == 0:
                     return text[start:i+1]
     raise ValueError("Не удалось извлечь JSON-массив из ответа GPT.")
+
 

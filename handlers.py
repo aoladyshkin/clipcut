@@ -34,11 +34,90 @@ from states import (
 )
 from datetime import datetime, timezone
 from pricing import DEMO_CONFIG
-from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, ADMIN_USER_IDS
+from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, ADMIN_USER_IDS, MODERATORS_GROUP_ID
 from processing.demo import simulate_demo_processing
 
 logger = logging.getLogger(__name__)
 
+async def url_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Clears the user context and forwards the update to the get_url handler."""
+    context.user_data.clear()
+    context.user_data['config'] = {}
+    
+    # Manually set up the user's language if it's not already there
+    user_id = update.effective_user.id
+    _, _, _, lang, is_new = get_user(user_id)
+    if is_new:
+        # This is a fallback, as the user might not have used /start yet
+        lang = 'ru' 
+    context.user_data['lang'] = lang
+
+    logger.info(f"URL entrypoint triggered for user {user_id}. Context cleared.")
+    
+    return await get_url(update, context)
+
+async def handle_dislike_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the dislike button click."""
+    query = update.callback_query
+
+    user_id = query.from_user.id
+    message_id = query.message.message_id
+    chat_id = query.message.chat_id
+
+    _, _, _, lang, _ = get_user(user_id)
+
+    await query.answer(get_translation(lang, "dislike_received"))
+
+    if MODERATORS_GROUP_ID:
+        try:
+            await context.bot.forward_message(
+                chat_id=MODERATORS_GROUP_ID,
+                from_chat_id=chat_id,
+                message_id=message_id
+            )
+
+            moderation_keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(get_translation(lang, "moderation_good"), callback_data=f'moderate_good_{user_id}'),
+                    InlineKeyboardButton(get_translation(lang, "moderation_bad"), callback_data=f'moderate_bad_{user_id}')
+                ]
+            ])
+
+            await context.bot.send_message(
+                chat_id=MODERATORS_GROUP_ID,
+                text=f"User {user_id} reported a video.",
+                reply_markup=moderation_keyboard
+            )
+
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception as e:
+            logger.error(f"Failed to forward dislike message to moderators group: {e}")
+
+async def handle_moderation_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the moderation button click."""
+    query = update.callback_query
+    await query.answer()
+
+    moderator_id = query.from_user.id
+    data = query.data.split('_')
+    action = data[1]
+    user_id = int(data[2])
+
+    _, _, _, lang, _ = get_user(user_id)
+
+    if action == 'bad':
+        add_to_user_balance(user_id, 1)
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=get_translation(lang, "moderation_refund")
+        )
+        await query.edit_message_text(f"Moderation completed by {moderator_id}. User {user_id} has been refunded.")
+    elif action == 'good':
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=get_translation(lang, "moderation_no_problem")
+        )
+        await query.edit_message_text(f"Moderation completed by {moderator_id}. No issues found.")
 
 
 async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -146,7 +225,9 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info(f"Config for {update.effective_user.id}: force_ai_transcription = False (default)")
 
     keyboard = [
-        [InlineKeyboardButton(get_translation(lang, "auto_button"), callback_data='auto')]
+        [
+            InlineKeyboardButton(get_translation(lang, "auto_button"), callback_data='auto')
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     message = await update.message.reply_text(
@@ -931,3 +1012,4 @@ async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     await query.edit_message_text(get_translation(lang, "thank_you_for_rating"))
     context.user_data.clear()
     return ConversationHandler.END
+

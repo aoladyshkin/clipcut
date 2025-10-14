@@ -2,6 +2,7 @@ from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, fi
 from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback, broadcast_to_start, broadcast_to_message
 from handlers import (
     get_url,
+    url_entrypoint,
     get_shorts_number_auto,
     get_shorts_number_manual,
     get_layout,
@@ -52,6 +53,7 @@ def get_conv_handler():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
+            MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/')), url_entrypoint),
             CallbackQueryHandler(start_demo, pattern='^start_demo$'),
             CommandHandler("topup", topup_start),
             CallbackQueryHandler(topup_start, pattern='^topup_start$'),

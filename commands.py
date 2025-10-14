@@ -177,7 +177,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await query.answer()
     
     user_id = update.effective_user.id
-    _, _, _, lang, _ = get_user(user_id)
+    _, balance, _, lang, _ = get_user(user_id)
     log_event(user_id, 'topup_start', {})
 
     bot_username = context.bot.username
@@ -192,7 +192,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     
     keyboard = []
     if is_discount_time:
-        message_text = get_translation(lang, "topup_package_prompt_discount")
+        message_text = get_translation(lang, "topup_package_prompt_discount").format(balance=balance)
         for package in packages:
             shorts = package['shorts']
             rub = package['rub']
@@ -206,7 +206,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     else:
-        message_text = get_translation(lang, "topup_package_prompt")
+        message_text = get_translation(lang, "topup_package_prompt").format(balance=balance)
         for package in packages:
             shorts = package['shorts']
             rub = package['rub']

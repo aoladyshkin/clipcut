@@ -39,6 +39,23 @@ from processing.demo import simulate_demo_processing
 
 logger = logging.getLogger(__name__)
 
+async def url_entrypoint(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Clears the user context and forwards the update to the get_url handler."""
+    context.user_data.clear()
+    context.user_data['config'] = {}
+    
+    # Manually set up the user's language if it's not already there
+    user_id = update.effective_user.id
+    _, _, _, lang, is_new = get_user(user_id)
+    if is_new:
+        # This is a fallback, as the user might not have used /start yet
+        lang = 'ru' 
+    context.user_data['lang'] = lang
+
+    logger.info(f"URL entrypoint triggered for user {user_id}. Context cleared.")
+    
+    return await get_url(update, context)
+
 
 
 async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

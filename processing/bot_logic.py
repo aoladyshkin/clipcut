@@ -167,8 +167,13 @@ def merge_video_audio(video_path, audio_path, output_path):
         output_path
     ]
 
-    subprocess.run(cmd, check=True)
-    
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        error_message = f"ffmpeg merge failed with exit code {e.returncode}:\n{e.stderr}"
+        logger.error(error_message)
+        raise RuntimeError(error_message) from e
+
     # удаляем видео без звука
     if os.path.exists(video_path):
         os.remove(video_path)

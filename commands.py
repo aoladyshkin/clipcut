@@ -469,7 +469,7 @@ async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYP
         writer = csv.writer(output)
         
         # Write header
-        writer.writerow(['user_id', 'balance', 'generated_shorts_count', 'referred_by', 'source'])
+        writer.writerow(['user_id', 'balance', 'generated_shorts_count', 'referred_by', 'source', 'language'])
         
         # Write data
         writer.writerows(users_data)

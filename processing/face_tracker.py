@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*- 
-
 import cv2
 import numpy as np
 from moviepy.editor import vfx
@@ -29,12 +27,11 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
         print(f"Could not load face cascade model(s): {e}. Falling back to center crop.")
         return main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=target_width)
 
-    # 1. Analyze face positions and sizes throughout the clip
+    # 1. Analyze face positions and sizes, and detect hard cuts
     processing_fps = 15
     timestamps = np.arange(0, main_clip_resized.duration, 1/processing_fps)
     face_boxes = []
     tracked_face_box = None
-    frames_without_good_match = 0
 
     for t in timestamps:
         frame = main_clip_resized.get_frame(t)
@@ -54,129 +51,89 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
 
         faces = np.array(all_faces)
         
-        # Determine if we should be in group mode for this frame (temporarily disabled)
-        use_group_logic = False
-        # if len(faces) > 1:
-        #     x_min = min(faces[:, 0])
-        #     x_max = max(faces[:, 0] + faces[:, 2])
-        #     group_width = x_max - x_min
-        #     if group_width < target_width * 0.9:
-        #         use_group_logic = True
-
         current_face_box = None
-        if use_group_logic:
-            # Calculate the ideal group box for the current frame
-            y_min = min(faces[:, 1])
-            y_max = max(faces[:, 1] + faces[:, 3])
-            current_group_box = np.array([x_min, y_min, group_width, y_max - y_min])
+        is_hard_cut = False
 
-            # Smoothly update the tracked_face_box towards the new group box
-            if tracked_face_box is None:
-                # First time entering group mode (or after reset)
-                tracked_face_box = current_group_box
-            else:
-                # Smooth the transition to avoid jumps
-                alpha = 0.4 
-                tracked_face_box = (1 - alpha) * tracked_face_box + alpha * current_group_box
+        if tracked_face_box is not None:
+            previous_center = get_box_center(tracked_face_box)
+            previous_width = tracked_face_box[2]
             
-            current_face_box = tracked_face_box
-
-        elif len(faces) > 0:
-            # Fallback to original single-face tracking logic
-            if tracked_face_box is None:
-                # No face was tracked before, pick the biggest one
-                tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
-                current_face_box = tracked_face_box
-                frames_without_good_match = 0
-            else:
-                previous_center = get_box_center(tracked_face_box)
-                previous_width = tracked_face_box[2]
-                
-                closest_face = min(faces, key=lambda f: distance(get_box_center(f), previous_center))
-                
+            closest_face = min(faces, key=lambda f: distance(get_box_center(f), previous_center), default=None)
+            
+            if closest_face is not None:
                 dist = distance(get_box_center(closest_face), previous_center)
                 max_allowed_distance = previous_width * 1.5
-                
                 closest_width = closest_face[2]
-                # Avoid division by zero if width is 0
                 width_ratio = closest_width / previous_width if previous_width > 0 else 0
 
-                # Check for a good match: distance is small and size is similar
                 if dist < max_allowed_distance and 0.3 < width_ratio < 2.0:
-                    # It's a good match, update the tracker
                     tracked_face_box = closest_face
                     current_face_box = tracked_face_box
-                    frames_without_good_match = 0
                 else:
-                    # It's a bad match (false positive or face lost).
-                    frames_without_good_match += 1
-                    
-                    # If face is lost for too long, reset the tracker to re-acquire.
-                    if frames_without_good_match > 15: # ~1 second
-                        tracked_face_box = None
-                        current_face_box = None
-                    else:
-                        # If face is lost for a short time, just hold the position.
-                        current_face_box = None
-                        # And keep the old tracked_face_box in memory
-        else:
-            # No faces detected
-            frames_without_good_match += 1
-            if frames_without_good_match > 15:
-                 tracked_face_box = None
-            current_face_box = None
-        
-        face_boxes.append(current_face_box)
+                    tracked_face_box = None # Lost lock
+            else:
+                tracked_face_box = None # Lost lock
 
-    # 2. Fill in missing face boxes (hold last known box)
+        if tracked_face_box is None and len(faces) > 0:
+            is_hard_cut = True
+            tracked_face_box = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
+            current_face_box = tracked_face_box
+
+        face_boxes.append((current_face_box, is_hard_cut))
+
+    # 2. Fill in missing face boxes
     last_known_box = None
     interp_face_boxes = []
-    for box in face_boxes:
+    for box, is_hard_cut in face_boxes:
         if box is not None:
-            interp_face_boxes.append(box)
+            interp_face_boxes.append((box, is_hard_cut))
             last_known_box = box
         else:
-            interp_face_boxes.append(last_known_box)
+            interp_face_boxes.append((last_known_box, False))
     
-    if not any(b is not None for b in interp_face_boxes):
+    if not any(b[0] is not None for b in interp_face_boxes):
         print("No faces found in the clip. Falling back to center crop.")
         return main_clip_resized.fx(vfx.crop, x_center=main_clip_resized.w / 2, width=target_width)
     
     first_valid_box_index = -1
-    for i, box in enumerate(interp_face_boxes):
+    for i, (box, _) in enumerate(interp_face_boxes):
         if box is not None:
             first_valid_box_index = i
             break
     
     if first_valid_box_index != -1:
+        first_valid_box_tuple = interp_face_boxes[first_valid_box_index]
         for i in range(first_valid_box_index):
-            interp_face_boxes[i] = interp_face_boxes[first_valid_box_index]
+            interp_face_boxes[i] = (first_valid_box_tuple[0], False)
 
-
-    # 3. Generate the smoothed crop path with dead zone logic
+    # 3. Generate the smoothed crop path with hard cut detection
     crop_path_x = []
     crop_half_width = target_width / 2
     crop_x_center = main_clip_resized.w / 2
     target_crop_x_center = main_clip_resized.w / 2
-    smoothing_factor = 0.1
+    smoothing_factor = 0.2
 
-    for box in interp_face_boxes:
+    for box, is_hard_cut in interp_face_boxes:
         if box is None:
-            # Should not happen due to filling logic, but as a safeguard
             crop_path_x.append(crop_x_center)
             continue
 
         face_center_x, _ = get_box_center(box)
-        face_width = box[2]
         
-        visible_left = crop_x_center - crop_half_width
-        visible_right = crop_x_center + crop_half_width
-        buffer = face_width * 0.5
-
-        if not (visible_left + buffer < face_center_x < visible_right - buffer):
+        if is_hard_cut:
             target_crop_x_center = face_center_x
+            crop_x_center = face_center_x
+        else:
+            face_width = box[2]
+            visible_left = crop_x_center - crop_half_width
+            visible_right = crop_x_center + crop_half_width
+            buffer = face_width * 0.5
+
+            if not (visible_left + buffer < face_center_x < visible_right - buffer):
+                target_crop_x_center = face_center_x
+            
+            crop_x_center = (smoothing_factor * target_crop_x_center) + ((1 - smoothing_factor) * crop_x_center)
         
-        crop_x_center = (smoothing_factor * target_crop_x_center) + ((1 - smoothing_factor) * crop_x_center)
         crop_path_x.append(crop_x_center)
 
     # 4. Create a function that returns the crop center for any time t
@@ -187,20 +144,17 @@ def create_face_tracked_clip(main_clip_raw, target_height, target_width):
     def get_crop_x(t):
         return np.interp(t, timestamps, final_smoothed_x)
 
-    # 5. Apply the animated crop using .fl() for compatibility
+    # 5. Apply the animated crop
     def time_varying_crop(gf, t):
         frame = gf(t)
         center_x = get_crop_x(t)
         
-        # Calculate integer bounds for the crop, ensuring constant width
         x1 = int(round(center_x - target_width / 2))
         x2 = x1 + target_width
         
-        # Ensure crop is within frame bounds
         h, w, c = frame.shape
         x1 = max(0, x1)
         x2 = min(w, x2)
-        # Adjust x1 if x2 was clipped
         x1 = x2 - target_width
 
         return frame[:, x1:x2]

@@ -105,7 +105,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     lang = config.get('lang', 'ru')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
-        # out_dir = Path('output3')
+        # out_dir = Path('output6')
         audio_lang = config.get('audio_lang', 'ru')
         video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
 
@@ -120,7 +120,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             return 0, 0
         
         shorts_number = config.get('shorts_number', 'auto')
-        # shorts_timecodes = [{ "start": "00:01:56.0", "end": "00:02:16.0", "hook": '' }, { "start": "00:02:56.0", "end": "00:03:16.0", "hook": '' }]
+        # shorts_timecodes = [{ "start": "01:12:28.0", "end": "01:12:55.0", "hook": '' }]
         shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:

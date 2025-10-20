@@ -13,6 +13,7 @@ ADMIN_USER_IDS = [id.strip() for id in os.environ.get("ADMIN_USER_IDS", "").spli
 FEEDBACK_GROUP_ID = os.environ.get("FEEDBACK_GROUP_ID")
 FORWARD_RESULTS_GROUP_ID = os.environ.get("FORWARD_RESULTS_GROUP_ID")
 MAX_CONCURRENT_TASKS = int(os.environ.get("MAX_CONCURRENT_TASKS", "1"))
+REWARD_FOR_FEEDBACK = 10
 
 # --- OpenAI ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")

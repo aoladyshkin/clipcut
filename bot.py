@@ -14,7 +14,7 @@ from commands import (
     start_discount, end_discount, referral_command, remove_user_command, 
     export_users_command, lang_command, set_language
 )
-from handlers import precheckout_callback, successful_payment_callback, handle_dislike_button, handle_moderation_button
+from handlers import precheckout_callback, successful_payment_callback, handle_dislike_button, handle_moderation_button, handle_feedback_approval
 from processing.bot_logic import main as process_video
 from states import RATING, GET_LANGUAGE
 from analytics import init_analytics_db, log_event
@@ -334,6 +334,7 @@ def main():
     application.add_handler(CallbackQueryHandler(set_language, pattern='^set_lang_'))
     application.add_handler(CallbackQueryHandler(handle_dislike_button, pattern='^dislike$'))
     application.add_handler(CallbackQueryHandler(handle_moderation_button, pattern='^moderate_'))
+    application.add_handler(CallbackQueryHandler(handle_feedback_approval, pattern='^(approve|decline)_feedback:'))
 
     logger.info("Бот запущен и готов к работе...")
     application.run_polling()

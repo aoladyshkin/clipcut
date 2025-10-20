@@ -133,5 +133,9 @@
     "moderation_good": "Good",
     "moderation_refund": "A problem was found with one of the videos. 1 short has been returned to your balance.",
     "moderation_no_problem": "We reviewed the video you reported and found no issues. If you disagree, please contact support.",
-    "moderation_completed": "Moderation completed."
+    "moderation_completed": "Moderation completed.",
+    "approve": "Approve",
+    "decline": "Decline",
+    "feedback_from_user_with_text": "Feedback from user {user_id}:\n\n{feedback_text}",
+    "feedback_approved": "Awesome, your feedback has been approved! 🎉 We\'ve awarded you {reward} shorts as a thank you."
 }

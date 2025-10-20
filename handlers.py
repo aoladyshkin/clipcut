@@ -34,7 +34,7 @@ from states import (
 )
 from datetime import datetime, timezone
 from pricing import DEMO_CONFIG
-from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, ADMIN_USER_IDS, MODERATORS_GROUP_ID
+from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK
 from processing.demo import simulate_demo_processing
 
 logger = logging.getLogger(__name__)
@@ -983,26 +983,59 @@ async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ConversationHandler.END
 
 async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handles the user's text feedback and forwards it."""
+    """Handles the user's text feedback and forwards it with approval buttons."""
     user_id = update.message.from_user.id
     _, _, _, lang, _ = get_user(user_id)
+    feedback_text = update.message.text
 
     if FEEDBACK_GROUP_ID:
         try:
-            await context.bot.forward_message(
-                chat_id=FEEDBACK_GROUP_ID,
-                from_chat_id=update.message.chat_id,
-                message_id=update.message.message_id
-            )
+            keyboard = [
+                [
+                    InlineKeyboardButton(get_translation(lang, "approve"), callback_data=f'approve_feedback:{user_id}'),
+                    InlineKeyboardButton(get_translation(lang, "decline"), callback_data=f'decline_feedback:{user_id}')
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
             await context.bot.send_message(
                 chat_id=FEEDBACK_GROUP_ID,
-                text=get_translation(lang, "feedback_from_user").format(user_id=user_id)
+                text=get_translation(lang, "feedback_from_user_with_text").format(user_id=user_id, feedback_text=feedback_text),
+                reply_markup=reply_markup
             )
         except Exception as e:
             logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
 
     await update.message.reply_text(get_translation(lang, "thank_you_for_feedback"))
     return ConversationHandler.END
+
+async def handle_feedback_approval(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the approval or decline of feedback."""
+    query = update.callback_query
+    await query.answer()
+
+    admin_user = query.from_user
+    data = query.data.split(':')
+    action = data[0]
+    user_id = int(data[1])
+
+    original_message = query.message.text
+    
+    _, _, _, lang, _ = get_user(user_id)
+
+    if action == 'approve_feedback':
+        add_to_user_balance(user_id, REWARD_FOR_FEEDBACK)
+        await query.edit_message_text(
+            f"{original_message}\n\n---\nApproved by {admin_user.full_name} (@{admin_user.username})\n+ {REWARD_FOR_FEEDBACK} shorts for user {user_id}"
+        )
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=get_translation(lang, "feedback_approved").format(reward=REWARD_FOR_FEEDBACK)
+        )
+    elif action == 'decline_feedback':
+        await query.edit_message_text(
+            f"{original_message}\n\n---\nDeclined by {admin_user.full_name} (@{admin_user.username})"
+        )
 
 async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Skips the text feedback step."""

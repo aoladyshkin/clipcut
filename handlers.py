@@ -6,6 +6,8 @@ from telegram.error import TimedOut
 from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
+import yookassa
+from yookassa import Configuration
 from processing.bot_logic import main as process_video
 from processing.download import check_video_availability
 from utils import format_config
@@ -30,11 +32,16 @@ from states import (
     GET_FEEDBACK_TEXT,
     GET_TARGETED_BROADCAST_MESSAGE,
     GET_LANGUAGE,
-    GET_BANNER
+    GET_BANNER,
+    YOOKASSA_PAYMENT
 )
 from datetime import datetime, timezone
 from pricing import DEMO_CONFIG
-from config import FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK
+from config import (
+    FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, 
+    ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK,
+    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY
+)
 from processing.demo import simulate_demo_processing
 
 logger = logging.getLogger(__name__)
@@ -756,11 +763,411 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
             InlineKeyboardButton(get_translation(lang, "telegram_stars_button"), callback_data='topup_stars'),
             InlineKeyboardButton(get_translation(lang, "cryptobot_button"), callback_data='topup_crypto'),
         ],
+        [
+            InlineKeyboardButton(get_translation(lang, "card_sbp_button"), callback_data='topup_yookassa'),
+        ],
         [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_package_selection')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(get_translation(lang, "topup_prompt"), reply_markup=reply_markup)
     return GET_TOPUP_METHOD
+
+async def topup_yookassa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the YooKassa payment for the selected package."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    log_event(user_id, 'topup_method_selected', {'method': 'yookassa'})
+
+    package = context.user_data.get('topup_package')
+    if not package:
+        await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
+        return ConversationHandler.END
+
+    amount = package['shorts']
+    total_price = package['rub']
+
+    Configuration.configure(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+
+    idempotence_key = str(uuid.uuid4())
+    payment = await asyncio.to_thread(
+        yookassa.Payment.create,
+        {
+            "amount": {
+                "value": str(total_price),
+                "currency": "RUB"
+            },
+            "confirmation": {
+                "type": "redirect",
+                "return_url": f"https://t.me/{context.bot.username}"
+            },
+            "capture": True,
+            "description": f"Top-up for {amount} shorts",
+            "metadata": {
+                "user_id": user_id,
+                "shorts_amount": amount
+            }
+        },
+        idempotence_key
+    )
+
+    payment_url = payment.confirmation.confirmation_url
+    payment_id = payment.id
+
+    payload = f"check_yookassa:{user_id}:{amount}:{payment_id}"
+
+    keyboard = [
+        [InlineKeyboardButton(get_translation(lang, "pay_button"), url=payment_url)],
+        [InlineKeyboardButton(get_translation(lang, "check_payment_button"), callback_data=payload)],
+        [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_package_selection')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        get_translation(lang, "yookassa_payment_details").format(
+            payment_id=payment_id,
+            total_price=total_price
+        ),
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+
+    return YOOKASSA_PAYMENT
+
+async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Checks the YooKassa payment and updates the balance."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+
+    try:
+        identifier, user_id_str, amount_str, payment_id = query.data.split(':')
+        user_id_from_payload = int(user_id_str)
+        amount = int(amount_str)
+
+        Configuration.configure(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
+        payment = await asyncio.to_thread(yookassa.Payment.find_one, payment_id)
+
+        if payment.status == 'succeeded':
+            if 'payment_not_found_messages' in context.user_data:
+                for message_id in context.user_data['payment_not_found_messages']:
+                    try:
+                        await context.bot.delete_message(chat_id=user_id_from_payload, message_id=message_id)
+                    except Exception as e:
+                        logger.warning(f"Could not delete message {message_id}: {e}")
+                del context.user_data['payment_not_found_messages']
+
+            add_to_user_balance(user_id_from_payload, amount)
+            _, new_balance, _, _, _ = get_user(user_id_from_payload)
+            log_event(user_id_from_payload, 'payment_success', {'provider': 'yookassa', 'shorts_amount': amount, 'total_amount': payment.amount.value, 'currency': payment.amount.currency})
+
+            await query.edit_message_text(
+                get_translation(lang, "payment_successful").format(amount=amount, new_balance=new_balance),
+                parse_mode="HTML"
+            )
+            return ConversationHandler.END
+        elif payment.status == 'pending' or payment.status == 'waiting_for_capture':
+            msg = await context.bot.send_message(chat_id=user_id_from_payload, text=get_translation(lang, "payment_not_found_try_again"))
+            if 'payment_not_found_messages' not in context.user_data:
+                context.user_data['payment_not_found_messages'] = []
+            context.user_data['payment_not_found_messages'].append(msg.message_id)
+            return YOOKASSA_PAYMENT
+        else: # canceled, etc.
+            await query.edit_message_text(get_translation(lang, "payment_failed").format(status=payment.status))
+            return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error checking YooKassa payment: {e}", exc_info=True)
+        await query.edit_message_text(get_translation(lang, "payment_check_error"))
+        return YOOKASSA_PAYMENT
+
+
+async def back_to_package_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Goes back to the package selection screen."""
+    from commands import topup_start
+    return await topup_start(update, context)
+
+async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Sends an invoice for the selected package using Telegram Stars."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    log_event(user_id, 'topup_method_selected', {'method': 'telegram_stars'})
+
+    await query.delete_message()
+    
+    package = context.user_data.get('topup_package')
+    if not package:
+        await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
+        return ConversationHandler.END
+
+    shorts_amount = package['shorts']
+    stars_amount = package['stars']
+    
+    chat_id = update.effective_chat.id
+    title = get_translation(lang, "topup_invoice_title").format(shorts_amount=shorts_amount)
+    description = get_translation(lang, "topup_invoice_description").format(shorts_amount=shorts_amount)
+    payload = f"topup-{chat_id}-{shorts_amount}-{stars_amount}"
+    currency = "XTR"
+    prices = [LabeledPrice(get_translation(lang, "n_shorts").format(shorts_amount=shorts_amount), stars_amount)]
+
+    await context.bot.send_invoice(
+        chat_id=chat_id,
+        title=title,
+        description=description,
+        payload=payload,
+        provider_token=None,
+        currency=currency,
+        prices=prices
+    )
+    return ConversationHandler.END
+
+async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the crypto payment for the selected package."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    log_event(user_id, 'topup_method_selected', {'method': 'cryptobot'})
+
+    package = context.user_data.get('topup_package')
+    if not package:
+        await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
+        return ConversationHandler.END
+
+    amount = package['shorts']
+    total_price = package['usdt']
+
+    crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
+    invoice = await crypto.create_invoice(asset='USDT', amount=total_price)
+    await crypto.close()
+
+    payment_url = invoice.bot_invoice_url
+    invoice_id = invoice.invoice_id
+
+    payload = f"check_crypto:{user_id}:{amount}:{invoice_id}"
+
+    keyboard = [
+        [InlineKeyboardButton(get_translation(lang, "pay_button"), url=payment_url)],
+        [InlineKeyboardButton(get_translation(lang, "check_payment_button"), callback_data=payload)],
+        [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_package_selection')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await query.edit_message_text(
+        get_translation(lang, "you_are_buying_n_shorts_for_m_usdt").format(amount=amount, total_price=total_price),
+        reply_markup=reply_markup,
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+    
+    return CRYPTO_PAYMENT
+
+async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
+    """Answers the PreCheckoutQuery."""
+    query = update.pre_checkout_query
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    if query.invoice_payload.startswith('topup-'):
+        await query.answer(ok=True)
+    else:
+        await query.answer(ok=False, error_message=get_translation(lang, "something_went_wrong"))
+
+async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
+    """Confirms the successful payment."""
+    payment_info = update.message.successful_payment
+    payload_parts = payment_info.invoice_payload.split('-')
+    user_id = int(payload_parts[1])
+    shorts_amount = int(payload_parts[2])
+
+    add_to_user_balance(user_id, shorts_amount)
+    _, new_balance, _, lang, _ = get_user(user_id)
+
+    log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'shorts_amount': shorts_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
+
+    await context.bot.send_message(
+        chat_id=user_id,
+        text=get_translation(lang, "payment_successful").format(amount=shorts_amount, new_balance=new_balance),
+        parse_mode="HTML"
+    )
+
+from aiocryptopay import AioCryptoPay, Networks
+
+async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Checks the crypto payment and updates the balance."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+
+    try:
+        identifier, user_id_str, amount_str, invoice_id = query.data.split(':')
+        user_id_from_payload = int(user_id_str)
+        amount = int(amount_str)
+
+        try:
+            crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
+            invoices = await crypto.get_invoices(invoice_ids=invoice_id)
+            await crypto.close()
+
+            if invoices and invoices[0].status == 'paid':
+                if 'payment_not_found_messages' in context.user_data:
+                    for message_id in context.user_data['payment_not_found_messages']:
+                        try:
+                            await context.bot.delete_message(chat_id=user_id_from_payload, message_id=message_id)
+                        except Exception as e:
+                            logger.warning(f"Could not delete message {message_id}: {e}")
+                    del context.user_data['payment_not_found_messages']
+
+                add_to_user_balance(user_id_from_payload, amount)
+                _, new_balance, _, _, _ = get_user(user_id_from_payload)
+                log_event(user_id_from_payload, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
+
+                await query.edit_message_text(
+                    get_translation(lang, "payment_successful").format(amount=amount, new_balance=new_balance),
+                    parse_mode="HTML"
+                )
+                return ConversationHandler.END
+            else:
+                msg = await context.bot.send_message(chat_id=user_id_from_payload, text=get_translation(lang, "payment_not_found_try_again"))
+                if 'payment_not_found_messages' not in context.user_data:
+                    context.user_data['payment_not_found_messages'] = []
+                context.user_data['payment_not_found_messages'].append(msg.message_id)
+                return CRYPTO_PAYMENT
+
+        except Exception as e:
+            logger.error(f"Error checking crypto payment with aiocryptopay: {e}", exc_info=True)
+            await query.edit_message_text(get_translation(lang, "payment_system_error"))
+            return CRYPTO_PAYMENT
+
+    except (ValueError, IndexError) as e:
+        logger.error(f"Error checking crypto payment: {e}", exc_info=True)
+        await query.edit_message_text(get_translation(lang, "payment_check_error"))
+        return CRYPTO_PAYMENT
+
+async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancels the top-up process."""
+    query = update.callback_query
+    await query.answer()
+    await query.delete_message()
+    return ConversationHandler.END
+
+async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the user's rating and asks for text feedback."""
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get('lang', 'en')
+    rating = query.data.split('_')[1]
+    
+    rating_id = str(uuid.uuid4())
+    generation_id = context.user_data.get('generation_id')
+    log_event(query.from_user.id, 'rating', {'rating_id': rating_id, 'rating': rating, 'generation_id': generation_id})
+    
+    context.user_data['rating_id'] = rating_id
+    context.user_data['rating'] = rating
+
+    await query.edit_message_text(
+        text=get_translation(lang, "thank_you_for_rating_leave_feedback")
+    )
+    return FEEDBACK
+
+async def handle_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the user's text feedback and forwards it."""
+    user_id = update.message.from_user.id
+    lang = context.user_data.get('lang', 'en')
+    rating_id = context.user_data.get('rating_id')
+    rating = context.user_data.get('rating')
+
+    log_event(user_id, 'feedback', {'rating_id': rating_id})
+
+    if FEEDBACK_GROUP_ID:
+        try:
+            await context.bot.forward_message(
+                chat_id=FEEDBACK_GROUP_ID,
+                from_chat_id=update.message.chat_id,
+                message_id=update.message.message_id
+            )
+            # Optionally, send the rating as well
+            if rating:
+                await context.bot.send_message(
+                    chat_id=FEEDBACK_GROUP_ID,
+                    text=get_translation(lang, "user_rated").format(user_id=user_id, rating=rating)
+                )
+        except Exception as e:
+            logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
+
+    await update.message.reply_text(get_translation(lang, "thank_you_for_feedback"))
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the user's text feedback and forwards it with approval buttons."""
+    user_id = update.message.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    feedback_text = update.message.text
+
+    if FEEDBACK_GROUP_ID:
+        try:
+            keyboard = [
+                [
+                    InlineKeyboardButton(get_translation(lang, "approve"), callback_data=f'approve_feedback:{user_id}'),
+                    InlineKeyboardButton(get_translation(lang, "decline"), callback_data=f'decline_feedback:{user_id}')
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await context.bot.send_message(
+                chat_id=FEEDBACK_GROUP_ID,
+                text=get_translation(lang, "feedback_from_user_with_text").format(user_id=user_id, feedback_text=feedback_text),
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Failed to forward feedback to group {FEEDBACK_GROUP_ID}: {e}")
+
+    await update.message.reply_text(get_translation(lang, "thank_you_for_feedback"))
+    return ConversationHandler.END
+
+async def handle_feedback_approval(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles the approval or decline of feedback."""
+    query = update.callback_query
+    await query.answer()
+
+    admin_user = query.from_user
+    data = query.data.split(':')
+    action = data[0]
+    user_id = int(data[1])
+
+    original_message = query.message.text
+    
+    _, _, _, lang, _ = get_user(user_id)
+
+    if action == 'approve_feedback':
+        add_to_user_balance(user_id, REWARD_FOR_FEEDBACK)
+        await query.edit_message_text(
+            f"{original_message}\n\n---\nApproved by {admin_user.full_name} (@{admin_user.username})\n+ {REWARD_FOR_FEEDBACK} shorts for user {user_id}"
+        )
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=get_translation(lang, "feedback_approved").format(reward=REWARD_FOR_FEEDBACK)
+        )
+    elif action == 'decline_feedback':
+        await query.edit_message_text(
+            f"{original_message}\n\n---\nDeclined by {admin_user.full_name} (@{admin_user.username})"
+        )
+
+async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Skips the text feedback step."""
+    query = update.callback_query
+    await query.answer()
+    lang = context.user_data.get('lang', 'en')
+    await query.edit_message_text(get_translation(lang, "thank_you_for_rating"))
+    context.user_data.clear()
+    return ConversationHandler.END
 
 async def back_to_package_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Goes back to the package selection screen."""

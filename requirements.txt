@@ -13,3 +13,4 @@ clickhouse-driver
 opencv-python-headless
 pyspellchecker
 pysubs2
+yookassa

@@ -137,5 +137,5 @@
     "approve": "Approve",
     "decline": "Decline",
     "feedback_from_user_with_text": "Feedback from user {user_id}:\n\n{feedback_text}",
-    "feedback_approved": "Awesome, your feedback has been approved! 🎉 We\'ve awarded you {reward} shorts as a thank you."
+    "feedback_approved": "Awesome, your feedback has been approved! 🎉 We've awarded you {reward} shorts as a thank you."
 }

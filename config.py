@@ -42,3 +42,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./data/database.db")
 # --- Analytics ---
 ANALYTICS_DATABASE_URL = os.environ.get("ANALYTICS_DATABASE_URL", "sqlite:///./data/analytics.db")
 CRYPTO_BOT_TOKEN = os.environ.get("CRYPTO_BOT_TOKEN")
+
+# --- YooKassa ---
+YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID")
+YOOKASSA_SECRET_KEY = os.environ.get("YOOKASSA_SECRET_KEY")

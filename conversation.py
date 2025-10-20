@@ -15,6 +15,8 @@ from handlers import (
     cancel_conversation,
     topup_stars,
     topup_crypto,
+    topup_yookassa,
+    check_yookassa_payment,
     cancel_topup,
     select_topup_package,
     back_to_package_selection,
@@ -46,7 +48,8 @@ from states import (
     GET_FEEDBACK_TEXT,
     GET_TARGETED_BROADCAST_MESSAGE,
     GET_LANGUAGE,
-    GET_BANNER
+    GET_BANNER,
+    YOOKASSA_PAYMENT
 )
 
 def get_conv_handler():
@@ -105,11 +108,17 @@ def get_conv_handler():
             GET_TOPUP_METHOD: [
                 CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),
                 CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
+                CallbackQueryHandler(topup_yookassa, pattern='^topup_yookassa$'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             CRYPTO_PAYMENT: [
                 CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'),
+                CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
+            YOOKASSA_PAYMENT: [
+                CallbackQueryHandler(check_yookassa_payment, pattern='^check_yookassa:'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],

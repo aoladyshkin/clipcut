@@ -141,5 +141,6 @@
     "card_sbp_button": "💳 Card / SBP",
     "you_are_buying_n_shorts_for_m_rub": "You are buying {amount} shorts for {total_price} RUB.",
     "payment_failed": "Payment failed. Status: {status}",
-    "yookassa_payment_details": "<b>Payment # {payment_id}</b>\nFollow the link to pay!\n➖➖➖➖➖➖➖➖➖➖➖➖\n💸 Payment system: 💳 Card\n💰 Amount: {total_price} ₽\n⏰ Time to pay: 10 min.\n⚠️ Funds may take up to 10-15 minutes to be credited\n➖➖➖➖➖➖➖➖➖➖➖➖"
+    "yookassa_payment_details": "<b>Payment # {payment_id}</b>\nFollow the link to pay!\n➖➖➖➖➖➖➖➖➖➖➖➖\n💸 Payment system: 💳 Card\n💰 Amount: {total_price} ₽\n⏰ Time to pay: 10 min.\n⚠️ Funds may take up to 10-15 minutes to be credited\n➖➖➖➖➖➖➖➖➖➖➖➖",
+    "not_enough_disk_space": "The video is too large to be processed. Please choose a smaller video."
 }

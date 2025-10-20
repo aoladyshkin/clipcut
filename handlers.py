@@ -40,7 +40,7 @@ from pricing import DEMO_CONFIG
 from config import (
     FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, 
     ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK,
-    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY
+    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, ADMIN_USER_TAG
 )
 from processing.demo import simulate_demo_processing
 
@@ -221,6 +221,11 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             {'url': url, 'error': err}
         )
         logger.warning(f"Ошибка проверки доступности видео: {err}")
+        if err == "not enough disk space" and MODERATORS_GROUP_ID:
+            await context.bot.send_message(
+                chat_id=MODERATORS_GROUP_ID,
+                text=f"{ADMIN_USER_TAG} Video processing failed due to insufficient disk space.\n\nError: {err}\nURL: {url}"
+            )
         return GET_URL
 
     context.user_data['url'] = url

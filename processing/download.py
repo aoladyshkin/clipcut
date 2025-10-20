@@ -3,6 +3,8 @@
 import os
 import subprocess
 import re
+import shutil
+import json
 from pathlib import Path
 from pytubefix import YouTube
 from config import YOUTUBE_COOKIES_FILE
@@ -20,13 +22,33 @@ def _get_yt_dlp_command(base_command):
         return base_command[:3] + ["--cookies", YOUTUBE_COOKIES_FILE] + base_command[3:]
     return base_command
 
+def _get_video_filesize_yt_dlp(url: str) -> int:
+    """
+    Gets the video filesize using yt-dlp.
+    """
+    try:
+        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "-j", url])
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
+        video_info = json.loads(result.stdout)
+        return video_info.get('filesize') or video_info.get('filesize_approx') or 0
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while getting video filesize with yt-dlp: {e}")
+        return 0
+
 def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
-    Checks if a YouTube video is available and has subtitles.
+    Checks if a YouTube video is available, has subtitles, and if there is enough disk space.
     First tries pytubefix for availability, then falls back to yt-dlp.
     Subtitles are checked with yt-dlp.
     Returns a tuple (is_available, message, error_log).
     """
+    # 0. Check for disk space
+    filesize = _get_video_filesize_yt_dlp(url)
+    if filesize > 0:
+        free_space = shutil.disk_usage('.').free
+        if filesize > free_space - 500 * 1024 * 1024:
+            return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
+
     # 1. Check for video availability
     try:
         # First, try with pytubefix

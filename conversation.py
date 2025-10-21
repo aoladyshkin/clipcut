@@ -16,9 +16,8 @@ from handlers import (
     topup_stars,
     topup_crypto,
     topup_yookassa,
-    get_yookassa_email, # Added
+    get_yookassa_email,
     check_yookassa_payment,
-    cancel_topup,
     select_topup_package,
     back_to_package_selection,
     check_crypto_payment,
@@ -107,14 +106,12 @@ def get_conv_handler():
             ],
             GET_TOPUP_PACKAGE: [
                 CallbackQueryHandler(select_topup_package, pattern='^topup_package_'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             GET_TOPUP_METHOD: [
                 CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),
                 CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
                 CallbackQueryHandler(topup_yookassa, pattern='^topup_yookassa$'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             GET_YOOKASSA_EMAIL: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_yookassa_email),
@@ -122,12 +119,10 @@ def get_conv_handler():
             CRYPTO_PAYMENT: [
                 CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             YOOKASSA_PAYMENT: [
                 CallbackQueryHandler(check_yookassa_payment, pattern='^check_yookassa:'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
             GET_TARGETED_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_to_message)],

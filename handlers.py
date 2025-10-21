@@ -1418,12 +1418,7 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(get_translation(lang, "payment_check_error"))
         return CRYPTO_PAYMENT
 
-async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Cancels the top-up process."""
-    query = update.callback_query
-    await query.answer()
-    await query.delete_message()
-    return ConversationHandler.END
+
 
 async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the user's rating and asks for text feedback."""

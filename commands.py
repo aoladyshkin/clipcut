@@ -222,7 +222,6 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     
     message_text += "\n\n" + get_translation(lang, "referral_message").format(referral_link=referral_link)
 
-    keyboard.append([InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='cancel_topup')])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if query:

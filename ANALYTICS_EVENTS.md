@@ -142,16 +142,16 @@
 *   **Полезная нагрузка (`event_data`):**
     ```json
     {
-      "provider": "telegram_stars" или "cryptobot",
+      "provider": "telegram_stars", "cryptobot" или "yookassa",
       "shorts_amount": 10,
       "total_amount": 100,
-      "currency": "XTR" или "USDT"
+      "currency": "XTR", "USDT" или "RUB"
     }
     ```
-    *   `provider`: Способ оплаты (`telegram_stars` или `cryptobot`).
+    *   `provider`: Способ оплаты (`telegram_stars`, `cryptobot` или `yookassa`).
     *   `shorts_amount`: Количество купленных "шортсов".
     *   `total_amount`: Сумма платежа в указанной валюте.
-    *   `currency`: Валюта платежа (`XTR` для Stars, `USDT` для CryptoBot).
+    *   `currency`: Валюта платежа (`XTR` для Stars, `USDT` для CryptoBot, `RUB` для Yookassa).
 
 ---
 
@@ -388,7 +388,7 @@
 *   **Полезная нагрузка (`event_data`):**
     ```json
     {
-      "method": "telegram_stars" или "cryptobot"
+      "method": "telegram_stars", "cryptobot" или "yookassa"
     }
     ```
-    *   `method`: Выбранный метод оплаты.
+    *   `method`: Выбранный метод оплаты (`telegram_stars`, `cryptobot` или `yookassa`).

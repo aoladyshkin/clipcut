@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language
 from analytics import log_event
-from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE, GET_BROADCAST_W_PRICES_MESSAGE, GET_BROADCAST_W_PRICES_MESSAGE
 from config import TUTORIAL_LINK, ADMIN_USER_IDS
 from datetime import datetime, timezone
 from localization import get_translation
@@ -91,6 +91,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         base_commands.append(BotCommand(command="setbalance", description="Установить баланс пользователю"))
         base_commands.append(BotCommand(command="broadcast", description="Сделать рассылку"))
         base_commands.append(BotCommand(command="broadcast_to", description="Сделать рассылку определенным юзерам"))
+        base_commands.append(BotCommand(command="broadcast_w_prices", description="Сделать рассылку с ценами"))
         base_commands.append(BotCommand(command="start_discount", description="Начать скидку"))
         base_commands.append(BotCommand(command="end_discount", description="Завершить скидку"))
         base_commands.append(BotCommand(command="rm_user", description="Удалить пользователя"))
@@ -221,7 +222,6 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     
     message_text += "\n\n" + get_translation(lang, "referral_message").format(referral_link=referral_link)
 
-    keyboard.append([InlineKeyboardButton(get_translation(lang, "cancel_button"), callback_data='cancel_topup')])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if query:
@@ -338,6 +338,64 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
     return ConversationHandler.END
+
+
+async def broadcast_w_prices_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the broadcast with prices conversation."""
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id) # Use get_user to retrieve language
+    await update.message.reply_text(get_translation(lang, "broadcast_message_prompt"))
+    return GET_BROADCAST_W_PRICES_MESSAGE
+
+
+async def broadcast_w_prices_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Sends a broadcast message with prices to all users, respecting rate limits."""
+    
+    message_text = update.message.text
+    entities = update.message.entities
+    caption = update.message.caption
+    caption_entities = update.message.caption_entities
+    photo = update.message.photo[-1].file_id if update.message.photo else None
+    animation = update.message.animation.file_id if update.message.animation else None
+    
+    lang = 'ru'
+
+    # Create inline keyboard with pricing packages
+    keyboard = []
+    packages = get_package_prices(discount_active=True) # Assuming discount is active for broadcast
+    for package in packages:
+        shorts = package['shorts']
+        rub = package['rub']
+        original_rub = package['original_rub']
+        stars = package['stars']
+        usdt = package['usdt']
+        if package['highlight']:
+            button_text = "🔥 " + get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub) + " 🔥"
+        else:
+            button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
+        button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
+        keyboard.append([button])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    user_ids = get_all_user_ids()
+    sent_count = 0
+    for user_id in user_ids:
+        try:
+            if photo:
+                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=caption, caption_entities=caption_entities, reply_markup=reply_markup)
+            elif animation:
+                await context.bot.send_animation(chat_id=user_id, animation=animation, caption=caption, caption_entities=caption_entities, reply_markup=reply_markup)
+            elif message_text:
+                await context.bot.send_message(chat_id=user_id, text=message_text, entities=entities, reply_markup=reply_markup)
+            sent_count += 1
+        except TelegramError as e:
+            logger.error(f"Failed to send message to {user_id}: {e}")
+            failed_count += 1
+
+    await update.message.reply_text(get_translation(lang, "broadcast_sent_confirmation").format(count=sent_count))
+    return ConversationHandler.END
+
 
 async def broadcast_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts the targeted broadcast conversation."""

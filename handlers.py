@@ -747,6 +747,43 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 
+async def broadcast_topup_package_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Saves the selected package from a broadcast and prompts for the payment method."""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+    context.user_data['lang'] = lang
+
+    package_data = query.data.split('_')
+    shorts = int(package_data[2])
+    rub = float(package_data[3])
+    stars = int(package_data[4])
+    usdt = float(package_data[5])
+
+    # Start a new conversation context for this user
+    context.user_data['topup_package'] = {'shorts': shorts, 'rub': rub, 'stars': stars, 'usdt': usdt}
+    log_event(user_id, 'topup_package_selected_from_broadcast', {'package': context.user_data['topup_package']})
+
+    keyboard = [
+        [
+            InlineKeyboardButton(get_translation(lang, "telegram_stars_button"), callback_data='topup_stars'),
+            InlineKeyboardButton(get_translation(lang, "cryptobot_button"), callback_data='topup_crypto'),
+        ],
+        [
+            InlineKeyboardButton(get_translation(lang, "card_sbp_button"), callback_data='topup_yookassa'),
+        ],
+        [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='cancel_topup')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # We need to send a new message because we can't edit the broadcast message
+    await query.message.reply_text(get_translation(lang, "topup_prompt"), reply_markup=reply_markup)
+    
+    return GET_TOPUP_METHOD
+
+
 async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Saves the selected package and prompts for the payment method."""
     query = update.callback_query
@@ -1381,12 +1418,7 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_text(get_translation(lang, "payment_check_error"))
         return CRYPTO_PAYMENT
 
-async def cancel_topup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Cancels the top-up process."""
-    query = update.callback_query
-    await query.answer()
-    await query.delete_message()
-    return ConversationHandler.END
+
 
 async def handle_rating(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handles the user's rating and asks for text feedback."""

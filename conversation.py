@@ -1,5 +1,5 @@
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback, broadcast_to_start, broadcast_to_message
+from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback, broadcast_to_start, broadcast_to_message, broadcast_w_prices_start, broadcast_w_prices_message
 from handlers import (
     get_url,
     url_entrypoint,
@@ -16,9 +16,8 @@ from handlers import (
     topup_stars,
     topup_crypto,
     topup_yookassa,
-    get_yookassa_email, # Added
+    get_yookassa_email,
     check_yookassa_payment,
-    cancel_topup,
     select_topup_package,
     back_to_package_selection,
     check_crypto_payment,
@@ -51,7 +50,8 @@ from states import (
     GET_LANGUAGE,
     GET_BANNER,
     GET_YOOKASSA_EMAIL, # Added
-    YOOKASSA_PAYMENT
+    YOOKASSA_PAYMENT,
+    GET_BROADCAST_W_PRICES_MESSAGE
 )
 
 def get_conv_handler():
@@ -64,6 +64,7 @@ def get_conv_handler():
             CallbackQueryHandler(topup_start, pattern='^topup_start$'),
             CommandHandler("broadcast", broadcast_start),
             CommandHandler("broadcast_to", broadcast_to_start),
+            CommandHandler("broadcast_w_prices", broadcast_w_prices_start),
             CommandHandler("feedback", start_feedback)
         ],
         states={
@@ -105,14 +106,12 @@ def get_conv_handler():
             ],
             GET_TOPUP_PACKAGE: [
                 CallbackQueryHandler(select_topup_package, pattern='^topup_package_'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             GET_TOPUP_METHOD: [
                 CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),
                 CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
                 CallbackQueryHandler(topup_yookassa, pattern='^topup_yookassa$'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             GET_YOOKASSA_EMAIL: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_yookassa_email),
@@ -120,15 +119,14 @@ def get_conv_handler():
             CRYPTO_PAYMENT: [
                 CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             YOOKASSA_PAYMENT: [
                 CallbackQueryHandler(check_yookassa_payment, pattern='^check_yookassa:'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
-                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
             ],
             GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
             GET_TARGETED_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_to_message)],
+            GET_BROADCAST_W_PRICES_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_w_prices_message)],
             GET_FEEDBACK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_feedback)],
         },
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start)],

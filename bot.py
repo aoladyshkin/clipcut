@@ -5,18 +5,23 @@ import traceback
 import html
 
 from telegram import Update, Bot, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes, ConversationHandler
 import telegram.error
 
 from conversation import get_conv_handler
 from commands import (
     menu_command, add_shorts_command, set_user_balance_command, 
     start_discount, end_discount, referral_command, remove_user_command, 
-    export_users_command, lang_command, set_language
+    export_users_command, lang_command, set_language, cancel, start
 )
-from handlers import precheckout_callback, successful_payment_callback, handle_dislike_button, handle_moderation_button, handle_feedback_approval
+from handlers import (
+    precheckout_callback, successful_payment_callback, handle_dislike_button, 
+    handle_moderation_button, handle_feedback_approval, broadcast_topup_package_selection,
+    topup_stars, topup_crypto, topup_yookassa, get_yookassa_email, check_yookassa_payment,
+    check_crypto_payment, back_to_package_selection, cancel_topup
+)
 from processing.bot_logic import main as process_video
-from states import RATING, GET_LANGUAGE
+from states import RATING, GET_LANGUAGE, GET_TOPUP_METHOD, GET_YOOKASSA_EMAIL, CRYPTO_PAYMENT, YOOKASSA_PAYMENT
 from analytics import init_analytics_db, log_event
 from config import (
     TELEGRAM_BOT_TOKEN, MAX_CONCURRENT_TASKS, FORWARD_RESULTS_GROUP_ID, 
@@ -319,10 +324,39 @@ def main():
 
     conv_handler = get_conv_handler()
 
+    broadcast_topup_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(broadcast_topup_package_selection, pattern=r'^topup_package_')],
+        states={
+            GET_TOPUP_METHOD: [
+                CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),
+                CallbackQueryHandler(topup_crypto, pattern='^topup_crypto$'),
+                CallbackQueryHandler(topup_yookassa, pattern='^topup_yookassa$'),
+                CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
+            GET_YOOKASSA_EMAIL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_yookassa_email),
+            ],
+            CRYPTO_PAYMENT: [
+                CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'),
+                CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
+            YOOKASSA_PAYMENT: [
+                CallbackQueryHandler(check_yookassa_payment, pattern='^check_yookassa:'),
+                CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
+                CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start)],
+        allow_reentry=True
+    )
+
     application.add_handler(CommandHandler("menu", menu_command))
     application.add_handler(CommandHandler("referral", referral_command))
     application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(conv_handler)
+    application.add_handler(broadcast_topup_handler)
     application.add_handler(CommandHandler("addshorts", add_shorts_command))
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
     application.add_handler(CommandHandler("rm_user", remove_user_command))

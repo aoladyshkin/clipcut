@@ -1,5 +1,5 @@
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, filters, CallbackQueryHandler
-from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback, broadcast_to_start, broadcast_to_message
+from commands import start, topup_start, broadcast_start, broadcast_message, cancel, start_feedback, broadcast_to_start, broadcast_to_message, broadcast_w_prices_start, broadcast_w_prices_message
 from handlers import (
     get_url,
     url_entrypoint,
@@ -51,7 +51,8 @@ from states import (
     GET_LANGUAGE,
     GET_BANNER,
     GET_YOOKASSA_EMAIL, # Added
-    YOOKASSA_PAYMENT
+    YOOKASSA_PAYMENT,
+    GET_BROADCAST_W_PRICES_MESSAGE
 )
 
 def get_conv_handler():
@@ -64,6 +65,7 @@ def get_conv_handler():
             CallbackQueryHandler(topup_start, pattern='^topup_start$'),
             CommandHandler("broadcast", broadcast_start),
             CommandHandler("broadcast_to", broadcast_to_start),
+            CommandHandler("broadcast_w_prices", broadcast_w_prices_start),
             CommandHandler("feedback", start_feedback)
         ],
         states={
@@ -129,6 +131,7 @@ def get_conv_handler():
             ],
             GET_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_message)],
             GET_TARGETED_BROADCAST_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_to_message)],
+            GET_BROADCAST_W_PRICES_MESSAGE: [MessageHandler(filters.ALL & ~filters.COMMAND, broadcast_w_prices_message)],
             GET_FEEDBACK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_user_feedback)],
         },
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", start)],

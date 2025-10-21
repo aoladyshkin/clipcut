@@ -33,6 +33,7 @@ from states import (
     GET_TARGETED_BROADCAST_MESSAGE,
     GET_LANGUAGE,
     GET_BANNER,
+    GET_YOOKASSA_EMAIL, # Added
     YOOKASSA_PAYMENT
 )
 from datetime import datetime, timezone
@@ -778,7 +779,7 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     return GET_TOPUP_METHOD
 
 async def topup_yookassa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handles the YooKassa payment for the selected package."""
+    """Asks the user for their email for the YooKassa receipt."""
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -788,6 +789,28 @@ async def topup_yookassa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     package = context.user_data.get('topup_package')
     if not package:
         await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
+        return ConversationHandler.END
+
+    await query.edit_message_text(get_translation(lang, "yookassa_email_prompt"))
+    return GET_YOOKASSA_EMAIL
+
+async def get_yookassa_email(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receives the user's email and creates the YooKassa payment."""
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id)
+
+    email = update.message.text
+    # Basic email validation (can be expanded)
+    if "@" not in email or "." not in email:
+        await update.message.reply_text(get_translation(lang, "invalid_email_format"))
+        return GET_YOOKASSA_EMAIL
+
+    context.user_data['yookassa_email'] = email
+    log_event(user_id, 'yookassa_email_provided', {'email': email})
+
+    package = context.user_data.get('topup_package')
+    if not package:
+        await update.message.reply_text(get_translation(lang, "something_went_wrong"))
         return ConversationHandler.END
 
     amount = package['shorts']
@@ -812,6 +835,24 @@ async def topup_yookassa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "metadata": {
                 "user_id": user_id,
                 "shorts_amount": amount
+            },
+            "receipt": {
+                "customer": {
+                    "email": email
+                },
+                "items": [
+                    {
+                        "description": f"Top-up for {amount} shorts",
+                        "quantity": "1.00",
+                        "amount": {
+                            "value": str(total_price),
+                            "currency": "RUB"
+                        },
+                        "vat_code": 1,
+                        "payment_mode": "full_prepayment",
+                        "payment_subject": "service"
+                    }
+                ]
             }
         },
         idempotence_key
@@ -829,7 +870,7 @@ async def topup_yookassa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.edit_message_text(
+    await update.message.reply_text(
         get_translation(lang, "yookassa_payment_details").format(
             payment_id=payment_id,
             total_price=total_price
@@ -840,6 +881,7 @@ async def topup_yookassa(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
     return YOOKASSA_PAYMENT
+
 
 async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Checks the YooKassa payment and updates the balance."""

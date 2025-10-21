@@ -16,6 +16,7 @@ from handlers import (
     topup_stars,
     topup_crypto,
     topup_yookassa,
+    get_yookassa_email, # Added
     check_yookassa_payment,
     cancel_topup,
     select_topup_package,
@@ -49,6 +50,7 @@ from states import (
     GET_TARGETED_BROADCAST_MESSAGE,
     GET_LANGUAGE,
     GET_BANNER,
+    GET_YOOKASSA_EMAIL, # Added
     YOOKASSA_PAYMENT
 )
 
@@ -111,6 +113,9 @@ def get_conv_handler():
                 CallbackQueryHandler(topup_yookassa, pattern='^topup_yookassa$'),
                 CallbackQueryHandler(back_to_package_selection, pattern='^back_to_package_selection$'),
                 CallbackQueryHandler(cancel_topup, pattern='^cancel_topup$')
+            ],
+            GET_YOOKASSA_EMAIL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_yookassa_email),
             ],
             CRYPTO_PAYMENT: [
                 CallbackQueryHandler(check_crypto_payment, pattern='^check_crypto:'),

@@ -38,8 +38,7 @@ def _get_video_filesize_yt_dlp(url: str) -> int:
 def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
     Checks if a YouTube video is available, has subtitles, and if there is enough disk space.
-    First tries pytubefix for availability, then falls back to yt-dlp.
-    Subtitles are checked with yt-dlp.
+    First tries pytubefix for availability and subtitles, then falls back to yt-dlp.
     Returns a tuple (is_available, message, error_log).
     """
     # 0. Check for disk space
@@ -49,25 +48,30 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
         if filesize > free_space - 500 * 1024 * 1024:
             return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
 
-    # 1. Check for video availability
+    # 1. Check for video availability and subtitles
     try:
         # First, try with pytubefix
         yt = YouTube(url)
         _ = yt.title
         if not yt.streams:
             return False, get_translation(lang, "no_streams_found"), "no streams"
+        
+        # Check for any available captions
+        if not yt.captions:
+            return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
+
     except Exception as e:
-        logger.warning(f"pytubefix failed to check video availability: {e}. Falling back to yt-dlp.")
-        # If pytubefix fails, try with yt-dlp
+        logger.warning(f"pytubefix failed to check video availability or subtitles: {e}. Falling back to yt-dlp.")
+        # If pytubefix fails, try with yt-dlp for both checks
         is_available_yt_dlp, message_yt_dlp, err_yt_dlp = _check_video_availability_yt_dlp(url, lang)
         if not is_available_yt_dlp:
             return False, message_yt_dlp, err_yt_dlp
+        
+        # Subtitle check with yt-dlp as a fallback
+        if not _check_subtitles_availability_yt_dlp(url):
+            return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
 
-    # 2. If video is available, check for subtitles
-    if not _check_subtitles_availability_yt_dlp(url):
-        return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
-
-    # 3. If both are available, return success
+    # 2. If all checks passed, return success
     return True, get_translation(lang, "video_available"), "Video is available"
 
 def _check_subtitles_availability_yt_dlp(url: str) -> bool:

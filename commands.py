@@ -380,6 +380,7 @@ async def broadcast_w_prices_message(update: Update, context: ContextTypes.DEFAU
 
     user_ids = get_all_user_ids()
     sent_count = 0
+    failed_count = 0
     for user_id in user_ids:
         try:
             if photo:
@@ -393,7 +394,7 @@ async def broadcast_w_prices_message(update: Update, context: ContextTypes.DEFAU
             logger.error(f"Failed to send message to {user_id}: {e}")
             failed_count += 1
 
-    await update.message.reply_text(get_translation(lang, "broadcast_sent_confirmation").format(count=sent_count))
+    await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
     return ConversationHandler.END
 
 

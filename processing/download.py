@@ -156,15 +156,16 @@ def _download_video_only_yt_dlp(url, video_path):
         logger.error(f"An error occurred with yt-dlp while downloading video: {e}", exc_info=True)
         raise
 
-def _find_itag_for_lang_with_yt_dlp(url, lang='ru'):
-    print(f"Используем yt-dlp для поиска itag для языка '{lang}'...")
-    try:
-        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "-F", url])
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
+from typing import List, Dict, Tuple, Optional, Set
 
+def _get_available_audio_langs(url: str, yt_dlp_command: list) -> Set[str]:
+    """Использует yt-dlp для получения списка всех доступных языков аудио."""
+    try:
+        command = yt_dlp_command + ["-F", url]
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
         lines = result.stdout.split('\n')
         
-        audio_streams = []
+        audio_langs = set()
         table_started = False
         for line in lines:
             if '---' in line: 
@@ -173,101 +174,177 @@ def _find_itag_for_lang_with_yt_dlp(url, lang='ru'):
             if not table_started:
                 continue
 
+            if 'audio only' in line:
+                match = re.search(r'\[([a-zA-Z-]+)\]', line)
+                if match:
+                    audio_langs.add(match.group(1).split('-')[0])
+        return audio_langs
+    except Exception as e:
+        print(f"Не удалось получить список аудио-языков через yt-dlp: {e}")
+        return set()
+
+def _norm_lang(code: str) -> str:
+    c = code[2:] if code.startswith("a.") else code
+    return c.split("-")[0].lower()
+
+def _caption_pairs(captions) -> List[Tuple[str, object]]:
+    pairs = []
+    try:
+        for k, v in captions.items():
+            code = k if isinstance(k, str) else getattr(v, "code", None) or getattr(k, "code", None)
+            if isinstance(code, str):
+                pairs.append((code, v))
+    except Exception:
+        for obj in captions:
+            code = getattr(obj, "code", None) or getattr(obj, "name", None)
+            if isinstance(code, str):
+                pairs.append((code, obj))
+    seen, out = set(), []
+    for code, cap in pairs:
+        if code not in seen:
+            out.append((code, cap)); seen.add(code)
+    return out
+
+def _pick_lang_and_caption(yt, available_audio_langs: Set[str]) -> Tuple[Optional[object], Optional[str]]:
+    """Выбирает дорожку субтитров, проверяя наличие соответствующей аудиодорожки."""
+    pairs = _caption_pairs(yt.captions)
+    if not pairs:
+        return None, None
+
+    manual = [(c, cap) for c, cap in pairs if not c.startswith("a.")]
+    auto = [(c, cap) for c, cap in pairs if c.startswith("a.")]
+    langs_manual = {_norm_lang(c): (c, cap) for c, cap in manual}
+    langs_auto = {_norm_lang(c): (c, cap) for c, cap in auto}
+
+    tried = set()
+
+    def try_pick(lang: str) -> Optional[Tuple[object, str]]:
+        if lang not in available_audio_langs:
+            return None
+        # Сначала ручные, потом авто
+        if lang in langs_manual and langs_manual[lang][0] not in tried:
+            c, cap = langs_manual[lang]; tried.add(c); return cap, c
+        if lang in langs_auto and langs_auto[lang][0] not in tried:
+            c, cap = langs_auto[lang]; tried.add(c); return cap, c
+        return None
+
+    # 1) Приоритетные языки: ru -> uk -> en
+    for lang in ("ru", "uk", "en"):
+        r = try_pick(lang)
+        if r: return r
+
+    # 2) Любые другие языки, где есть и аудио, и субтитры
+    all_caption_langs = sorted(list(langs_manual.keys() | langs_auto.keys()))
+    for lang in all_caption_langs:
+        if lang not in ("ru", "uk", "en"):
+            r = try_pick(lang)
+            if r: return r
+
+    return None, None
+
+def _find_itag_for_lang_with_yt_dlp(url, lang: str, yt_dlp_command: list):
+    print(f"Используем yt-dlp для поиска itag для языка '{lang}'...")
+    try:
+        command = yt_dlp_command + ["-F", url]
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
+
+        lines = result.stdout.split('\n')
+        audio_streams = []
+        table_started = False
+        for line in lines:
+            if '---' in line: table_started = True; continue
+            if not table_started: continue
+
             if 'audio only' in line and f'[{lang}' in line:
                 match = re.match(r'^\s*([\d-]+)\s+', line)
                 if match:
                     itag = match.group(1)
                     tbr_match = re.search(r'(\d+)k', line)
                     bitrate = int(tbr_match.group(1)) if tbr_match else 0
-                    audio_streams.append({'itag': itag, 'bitrate': bitrate, 'line': line})
+                    audio_streams.append({'itag': itag, 'bitrate': bitrate})
 
         if not audio_streams:
             print("yt-dlp не нашел подходящих аудиопотоков.")
             return None
-        
-        print("Найденные yt-dlp потоки с указанием языка:")
-        for s in audio_streams:
-            print(f"- {s['line']}")
 
-        sorted_streams = sorted(audio_streams, key=lambda x: x['bitrate'], reverse=True)
-        medium_stream = sorted_streams[len(sorted_streams) // 2]
-        print(f"yt-dlp выбрал средний по качеству itag: {medium_stream['itag']}")
-        return medium_stream['itag']
+        best_stream = sorted(audio_streams, key=lambda x: x['bitrate'], reverse=True)[0]
+        print(f"yt-dlp выбрал лучший по качеству itag: {best_stream['itag']}")
+        return best_stream['itag']
         
-    except subprocess.TimeoutExpired:
-        print("Тайм-аут при вызове yt-dlp для получения форматов.")
-        return None
     except Exception as e:
         print(f"Ошибка при вызове yt-dlp для получения форматов: {e}")
         return None
 
-def download_audio_only(url, audio_path, lang='ru'):
+def download_audio_only(url, audio_path):
     """
-    Downloads audio using yt-dlp to find and fetch the correct language,
-    falling back to pytubefix if yt-dlp fails.
+    Автоматически определяет язык, проверяя наличие и аудио, и субтитров,
+    скачивает наилучшее качество и имеет запасной вариант.
     """
     audio_path = Path(audio_path).with_suffix(".ogg")
     temp_path = audio_path.with_suffix(".temp.mp4")
+    base_yt_dlp_command = _get_yt_dlp_command(["python3", "-m", "yt_dlp"])
 
-    # 1. Find the best itag using yt-dlp's format listing
-    itag = _find_itag_for_lang_with_yt_dlp(url, lang)
-    
+    itag = None
+    try:
+        # 1. Получить список доступных аудио-языков
+        available_audio_langs = _get_available_audio_langs(url, base_yt_dlp_command)
+        if not available_audio_langs:
+            print("Не найдено ни одной аудиодорожки через yt-dlp.")
+        
+        # 2. Выбрать язык, где есть и аудио, и субтитры
+        yt = YouTube(url)
+        _, chosen_code = _pick_lang_and_caption(yt, available_audio_langs)
+        
+        if chosen_code:
+            lang = _norm_lang(chosen_code)
+            print(f"Автоматически определен язык '{lang}' (субтитры: {chosen_code}). Ищем аудио...")
+            itag = _find_itag_for_lang_with_yt_dlp(url, lang, base_yt_dlp_command)
+        else:
+            print("Не удалось найти язык, где есть и аудио, и субтитры.")
+
+    except Exception as e:
+        print(f"Ошибка при определении языка: {e}. Переключаемся на метод по умолчанию.")
+
     downloaded = False
     if itag:
         print(f"Попытка скачать аудио с itag={itag} с помощью yt-dlp...")
         try:
-            command = _get_yt_dlp_command([
-                "python3", "-m", "yt_dlp",
-                "-f", itag,  # Use the specific itag
-                "--user-agent", "Mozilla/5.0",
-                "-o", str(temp_path),
-                url
-            ])
-            subprocess.run(command, check=True)
+            command = base_yt_dlp_command + ["-f", itag, "--user-agent", "Mozilla/5.0", "-o", str(temp_path), url]
+            subprocess.run(command, check=True, timeout=300)
             print("yt-dlp: Аудио успешно скачано.")
             downloaded = True
-        except subprocess.CalledProcessError as e_dlp:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e_dlp:
             print(f"yt-dlp не смог скачать аудио с itag={itag}: {e_dlp}")
 
-    # 2. If yt-dlp failed or didn't find an itag, fall back to pytubefix
+    # 3. Запасной метод: если ничего не вышло, качаем лучшее аудио через pytubefix
     if not downloaded:
         print("Переключаемся на pytubefix для скачивания аудио по умолчанию.")
         try:
             yt = YouTube(url)
-            streams = yt.streams.filter(only_audio=True).order_by('abr').desc()
-            stream = streams[len(streams) // 2] if streams else None
+            stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
             if not stream:
                 raise ConnectionError("pytubefix не нашел аудиопотоков.")
             
-            print(f"pytubefix скачивает аудиопоток с itag={stream.itag}...")
+            print(f"pytubefix скачивает аудиопоток с itag={stream.itag} (лучшее качество)...")
             stream.download(output_path=str(temp_path.parent), filename=temp_path.name)
-            print(f"pytubefix: Аудио успешно скачано.")
-            downloaded = True
+            print("pytubefix: Аудио успешно скачано.")
         except Exception as e:
             print(f"pytubefix тоже не смог скачать аудио: {e}")
-            return None # Both methods failed
+            return None
 
-
-
-    # 2. Convert to the required .ogg format for Whisper
+    # 4. Конвертация в .ogg
     try:
         subprocess.run([
-            "ffmpeg",
-            "-i", str(temp_path),
-            "-ac", "1",
-            "-ar", "24000",
-            "-c:a", "libopus",
-            "-b:a", "32k",
-            "-y",
-            str(audio_path)
-        ], check=True, capture_output=True, text=True) # Capture output to hide ffmpeg noise unless error
+            "ffmpeg", "-i", str(temp_path), "-ac", "1", "-ar", "24000",
+            "-c:a", "libopus", "-b:a", "32k", "-y", str(audio_path)
+        ], check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e_ffmpeg:
         print(f"ffmpeg conversion failed: {e_ffmpeg.stderr}")
+        temp_path.unlink(missing_ok=True)
         return None
 
-    # 3. Clean up the temporary file
+    # 5. Очистка
     temp_path.unlink(missing_ok=True)
-
     return audio_path
 
 

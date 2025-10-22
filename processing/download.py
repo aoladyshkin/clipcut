@@ -7,7 +7,7 @@ import shutil
 import json
 from pathlib import Path
 from pytubefix import YouTube
-from config import YOUTUBE_COOKIES_FILE
+from config import YOUTUBE_COOKIES_FILE, FREESPACE_LIMIT_MB
 
 
 import logging
@@ -45,7 +45,7 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     filesize = _get_video_filesize_yt_dlp(url)
     if filesize > 0:
         free_space = shutil.disk_usage('.').free
-        if filesize > free_space - 500 * 1024 * 1024:
+        if filesize > free_space - FREESPACE_LIMIT_MB * 1024 * 1024:
             return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
 
     # 1. Check for video availability and subtitles

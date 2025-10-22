@@ -50,11 +50,11 @@ def temporary_directory(delete: bool = True):
             shutil.rmtree(temp_dir)
             print(f"🗑️ Папка {temp_dir} удалена.")
 
-def download_media(url: str, out_dir: Path, audio_lang: str, lang: str):
+def download_media(url: str, out_dir: Path, lang: str):
     print("Скачиваем видео с YouTube...")
     try:
         video_only = download_video_only(url, out_dir / "video_only.mp4")
-        audio_only = download_audio_only(url, out_dir / "audio_only.ogg", lang=audio_lang)
+        audio_only = download_audio_only(url, out_dir / "audio_only.ogg")
     except Exception as e:
         raise Exception(get_translation(lang, "download_error")) from e
 
@@ -106,8 +106,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
         # out_dir = Path('output6')
-        audio_lang = config.get('audio_lang', 'ru')
-        video_full, audio_only = download_media(url, out_dir, audio_lang, lang)
+        video_full, audio_only = download_media(url, out_dir, lang)
 
         if status_callback:
             status_callback(get_translation(lang, "analyzing_video"))
@@ -118,7 +117,6 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         
         if not transcript_segments:
             return 0, 0
-        
         shorts_number = config.get('shorts_number', 'auto')
         # shorts_timecodes = [{ "start": "01:12:28.0", "end": "01:12:55.0", "hook": '' }]
         shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)

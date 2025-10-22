@@ -41,7 +41,7 @@ from pricing import DEMO_CONFIG
 from config import (
     FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, 
     ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK,
-    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, ADMIN_USER_TAG
+    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, ADMIN_USER_TAG, MODERATORS_USER_TAGS
 )
 from processing.demo import simulate_demo_processing
 
@@ -93,7 +93,7 @@ async def handle_dislike_button(update: Update, context: ContextTypes.DEFAULT_TY
 
             await context.bot.send_message(
                 chat_id=MODERATORS_GROUP_ID,
-                text=f"User {user_id} reported a video.",
+                text=f"User {user_id} reported a video. {MODERATORS_USER_TAGS}",
                 reply_markup=moderation_keyboard
             )
 

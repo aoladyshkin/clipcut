@@ -5,6 +5,7 @@ import subprocess
 import re
 import shutil
 import json
+import yt_dlp
 from pathlib import Path
 from pytubefix import YouTube
 from config import YOUTUBE_COOKIES_FILE, FREESPACE_LIMIT_MB
@@ -42,11 +43,9 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     Returns a tuple (is_available, message, error_log).
     """
     # 0. Check for disk space
-    filesize = _get_video_filesize_yt_dlp(url)
-    if filesize > 0:
-        free_space = shutil.disk_usage('.').free
-        if filesize > free_space - FREESPACE_LIMIT_MB * 1024 * 1024:
-            return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
+    free_space_mb = shutil.disk_usage('.').free / (1024 * 1024)
+    if free_space_mb < FREESPACE_LIMIT_MB:
+        return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
 
     # 1. Check for video availability and subtitles
     try:
@@ -120,41 +119,7 @@ def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, 
         return False, get_translation(lang, "video_unavailable_check_link"), str(e)
 
 
-def download_video_only(url, video_path):
-    try:
-        # First, try with pytubefix
-        yt = YouTube(url)
-        stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
-        if not stream:
-            stream = yt.streams.filter(type="video", file_extension='mp4').order_by('resolution').desc().first()
-        
-        if not stream:
-            raise ConnectionError("No suitable MP4 video stream found by pytubefix.")
 
-        output_dir = Path(video_path).parent
-        file_name = Path(video_path).name
-        stream.download(output_path=str(output_dir), filename=file_name)
-        print(f"pytubefix: Video downloaded successfully to {video_path}")
-        return video_path
-    except Exception as e:
-        logger.warning(f"pytubefix failed to download video: {e}. Falling back to yt-dlp.")
-        # If pytubefix fails, try with yt-dlp
-        return _download_video_only_yt_dlp(url, video_path)
-
-def _download_video_only_yt_dlp(url, video_path):
-    try:
-        command = _get_yt_dlp_command([
-            "python3", "-m", "yt_dlp",
-            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "-o", str(video_path),
-            url
-        ])
-        subprocess.run(command, check=True, timeout=300) # 5-minute timeout
-        print(f"yt-dlp: Video downloaded successfully to {video_path}")
-        return video_path
-    except Exception as e:
-        logger.error(f"An error occurred with yt-dlp while downloading video: {e}", exc_info=True)
-        raise
 
 from typing import List, Dict, Tuple, Optional, Set
 
@@ -206,7 +171,9 @@ def _caption_pairs(captions) -> List[Tuple[str, object]]:
     return out
 
 def _pick_lang_and_caption(yt, available_audio_langs: Set[str]) -> Tuple[Optional[object], Optional[str]]:
-    """Выбирает дорожку субтитров, проверяя наличие соответствующей аудиодорожки."""
+    """
+    Выбирает дорожку субтитров, проверяя наличие соответствующей аудиодорожки.
+    """
     pairs = _caption_pairs(yt.captions)
     if not pairs:
         return None, None
@@ -275,6 +242,41 @@ def _find_itag_for_lang_with_yt_dlp(url, lang: str, yt_dlp_command: list):
         print(f"Ошибка при вызове yt-dlp для получения форматов: {e}")
         return None
 
+def download_video_segment(url: str, output_path: str, start_time: float, end_time: float):
+    """
+    Downloads a specific segment of a YouTube video using the yt-dlp library with ffmpeg as an external downloader.
+    This implementation is based on the user-provided working example.
+    """
+    output_path = str(output_path)
+    duration = end_time - start_time
+
+    ydl_opts = {
+        # Using a pre-merged format as in the example to ensure stability
+        'format': 'best[height<=1080][ext=mp4]/best[ext=mp4]',
+        'outtmpl': output_path,
+        'external_downloader': 'ffmpeg',
+        'external_downloader_args': [
+            '-ss', str(start_time),
+            '-t', str(duration),
+            '-avoid_negative_ts', 'make_zero'
+        ]
+    }
+
+    if YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+        ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
+
+    try:
+        print(f"Downloading segment from {start_time} to {end_time} using yt-dlp library...")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        
+        print(f"Segment downloaded successfully to {output_path}")
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"yt-dlp library failed to download segment: {e}", exc_info=True)
+        raise
+
 def download_audio_only(url, audio_path):
     """
     Автоматически определяет язык, проверяя наличие и аудио, и субтитров,
@@ -314,6 +316,7 @@ def download_audio_only(url, audio_path):
             print("yt-dlp: Аудио успешно скачано.")
             downloaded = True
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e_dlp:
+
             print(f"yt-dlp не смог скачать аудио с itag={itag}: {e_dlp}")
 
     # 3. Запасной метод: если ничего не вышло, качаем лучшее аудио через pytubefix

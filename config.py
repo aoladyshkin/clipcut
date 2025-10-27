@@ -9,6 +9,7 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 ADMIN_GROUP_ID = os.environ.get("ADMIN_GROUP_ID")
 MODERATORS_GROUP_ID = os.environ.get("MODERATORS_GROUP_ID")
 ADMIN_USER_TAG = os.environ.get("ADMIN_USER_TAG", "@aoladyshkin")
+MODERATORS_USER_TAGS = os.environ.get("MODERATORS_USER_TAGS", "")
 ADMIN_USER_IDS = [id.strip() for id in os.environ.get("ADMIN_USER_IDS", "").split(',')]
 FEEDBACK_GROUP_ID = os.environ.get("FEEDBACK_GROUP_ID")
 FORWARD_RESULTS_GROUP_ID = os.environ.get("FORWARD_RESULTS_GROUP_ID")
@@ -47,4 +48,4 @@ CRYPTO_BOT_TOKEN = os.environ.get("CRYPTO_BOT_TOKEN")
 YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.environ.get("YOOKASSA_SECRET_KEY")
 
-FREESPACE_LIMIT_MB = 300  # Minimum free space in MB required to process videos
+FREESPACE_LIMIT_MB = 200  # Minimum free space in MB required to process videos

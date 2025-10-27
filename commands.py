@@ -550,3 +550,53 @@ async def start_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     _, _, _, lang, _ = get_user(user_id)
     await update.message.reply_text(get_translation(lang, "send_feedback_prompt"))
     return GET_FEEDBACK_TEXT
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = update.effective_user.id
+    _, _, _, lang, _ = get_user(user_id) # Get user language for translations
+
+    processing_queue = context.application.bot_data.get('processing_queue')
+    if not processing_queue or processing_queue.empty():
+        await update.message.reply_text(get_translation(lang, "no_tasks_in_queue"))
+        return
+
+    user_tasks = []
+    queue_size = processing_queue.qsize()
+    
+    # Iterate through the queue to find user's tasks and their positions
+    # Note: asyncio.Queue does not provide direct iteration or indexing.
+    # We need to temporarily get all items, process, and put them back.
+    # This is not ideal for a very large queue, but for typical bot usage, it should be fine.
+    
+    # Create a temporary list to hold queue items
+    temp_queue_items = []
+    for i in range(queue_size):
+        item = await processing_queue.get()
+        temp_queue_items.append(item)
+        # Put the item back immediately to maintain queue state
+        await processing_queue.put(item)
+
+    # Now iterate through the temporary list to find user's tasks
+    for i, task_data in enumerate(temp_queue_items):
+        if task_data['chat_id'] == user_id:
+            user_tasks.append({
+                'position': i + 1,
+                'url': task_data['user_data'].get('url', 'N/A'),
+                'generation_id': task_data['user_data'].get('generation_id', 'N/A')
+            })
+
+    if not user_tasks:
+        await update.message.reply_text(get_translation(lang, "no_tasks_in_queue"))
+        return
+
+    response_messages = [get_translation(lang, "your_tasks_in_queue")]
+    for task in user_tasks:
+        response_messages.append(
+            get_translation(lang, "task_status_item").format(
+                position=task['position'],
+                url=task['url'],
+                generation_id=task['generation_id']
+            )
+        )
+    
+    await update.message.reply_text("\n".join(response_messages), parse_mode="HTML", disable_web_page_preview=True)

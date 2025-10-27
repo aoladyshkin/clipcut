@@ -2,7 +2,7 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import ContextTypes, ConversationHandler
 import uuid
-from telegram.error import TimedOut
+from telegram.error import TimedOut, BadRequest
 from database import get_user, update_user_balance, add_to_user_balance
 import os
 import asyncio
@@ -168,7 +168,10 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.message.delete()
+    try:
+        await query.message.delete()
+    except BadRequest as e:
+        logger.warning(f"Could not delete message in start_demo: {e}")
     await context.bot.send_message(
         chat_id=query.message.chat_id,
         text=get_translation(lang, "demo_mode_started").format(url=context.user_data['url'], settings_text=settings_text),

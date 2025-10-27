@@ -162,37 +162,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         return successful_sends, extra_found
 
 
-def merge_video_audio(video_path, audio_path, output_path):
 
-    video_path = str(video_path)
-    audio_path = str(audio_path)
-    output_path = str(output_path)
-
-    # ffmpeg команда: конвертируем аудио в AAC для совместимости с MP4
-    cmd = [
-        "ffmpeg",
-        "-i", video_path,
-        "-i", audio_path,
-        "-c:v", "copy",        # копируем видео без перекодирования
-        "-c:a", "aac",         # конвертируем аудио в AAC
-        "-b:a", "128k",        # битрейт аудио
-        "-shortest",           # чтобы длительность файла была равна меньшей из видео/аудио
-        "-y",                  # перезаписываем если есть
-        output_path
-    ]
-
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e:
-        error_message = f"ffmpeg merge failed with exit code {e.returncode}:\n{e.stderr}"
-        logger.error(error_message)
-        raise RuntimeError(error_message) from e
-
-    # удаляем видео без звука
-    if os.path.exists(video_path):
-        os.remove(video_path)
-        
-    return output_path
 
 def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None):
     final_width = 720

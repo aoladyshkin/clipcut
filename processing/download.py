@@ -121,41 +121,7 @@ def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, 
         return False, get_translation(lang, "video_unavailable_check_link"), str(e)
 
 
-def download_video_only(url, video_path):
-    try:
-        # First, try with pytubefix
-        yt = YouTube(url)
-        stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
-        if not stream:
-            stream = yt.streams.filter(type="video", file_extension='mp4').order_by('resolution').desc().first()
-        
-        if not stream:
-            raise ConnectionError("No suitable MP4 video stream found by pytubefix.")
 
-        output_dir = Path(video_path).parent
-        file_name = Path(video_path).name
-        stream.download(output_path=str(output_dir), filename=file_name)
-        print(f"pytubefix: Video downloaded successfully to {video_path}")
-        return video_path
-    except Exception as e:
-        logger.warning(f"pytubefix failed to download video: {e}. Falling back to yt-dlp.")
-        # If pytubefix fails, try with yt-dlp
-        return _download_video_only_yt_dlp(url, video_path)
-
-def _download_video_only_yt_dlp(url, video_path):
-    try:
-        command = _get_yt_dlp_command([
-            "python3", "-m", "yt_dlp",
-            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "-o", str(video_path),
-            url
-        ])
-        subprocess.run(command, check=True, timeout=300) # 5-minute timeout
-        print(f"yt-dlp: Video downloaded successfully to {video_path}")
-        return video_path
-    except Exception as e:
-        logger.error(f"An error occurred with yt-dlp while downloading video: {e}", exc_info=True)
-        raise
 
 from typing import List, Dict, Tuple, Optional, Set
 

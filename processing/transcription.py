@@ -198,10 +198,9 @@ def normalize_segments(segs: List[Dict[str, float]], duration: Optional[float] =
         if duration is not None:
             if rs >= duration: 
                 continue  # Пропускаем сегменты, которые начинаются после конца аудио
-            rs = min(rs, duration)
             re_ = min(re_, duration)
 
-        rounded.append({"start": rs, "end": min(re_, int(duration) + 0.0), "text": s["text"]})
+        rounded.append({"start": rs, "end": re_, "text": s["text"]})
 
     return rounded
 
@@ -264,6 +263,8 @@ def download_captions_from_youtube(url: str) -> Tuple[List[Dict[str, float]], Op
 MAX_AUDIO_DURATION_SECONDS = 1200  # 20 мин под лимит ~25MB
 
 def get_audio_duration(audio_path):
+    if not audio_path or not os.path.exists(audio_path):
+        return None
     cmd = [
         "ffprobe", "-v", "error",
         "-show_entries", "format=duration",
@@ -354,9 +355,8 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
             segments, chosen_code = download_captions_from_youtube(url)
             print(f"Выбрана дорожка: {chosen_code}")
         except Exception as e:
-            print(f"Не удалось получить субтитры с YouTube ({e}). Пытаемся через Whisper.")
-            raise "Скачать субтитры не получилось"
-            # segments = transcribe_via_whisper(audio_path)
+            print(f"Не удалось получить субтитры с YouTube: {e}")
+            raise e
             
     segments = normalize_segments(segments, duration=audio_duration)
 

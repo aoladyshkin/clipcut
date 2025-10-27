@@ -62,7 +62,7 @@
     "purple_color_button": "Purple",
     "green_color_button": "Green",
     "insufficient_balance_for_generation": "You do not have enough shorts on your balance ({balance}) to generate {shorts_number} videos. Please top up your balance or choose a smaller number.",
-    "request_queued_message": "⏳ Your request has been queued (you are <b>#{queue_position} in the queue</b>). You will be notified when processing begins.\n\n<b>Your settings:</b>\nURL: {url}\n{settings_text}",
+    "request_queued_message": "⏳ Your request has been queued (you are <b>#{queue_position} in the queue</b>). You will be notified when processing begins.\n/status — show queue info.\n\n<b>Your settings:</b>\nURL: {url}\n{settings_text}",
     "demo_processing_started": "⚡ Your request has been taken into work. Starting download and processing of the demo video...",
     "settings_cancelled_prompt": "Settings cancelled.\n📎 Send a video link - and in a couple of minutes you will get ready-made videos for Shorts, Reels and TikTok.",
     "telegram_stars_button": "⭐️ Telegram Stars",

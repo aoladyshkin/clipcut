@@ -23,19 +23,6 @@ def _get_yt_dlp_command(base_command):
         return base_command[:3] + ["--cookies", YOUTUBE_COOKIES_FILE] + base_command[3:]
     return base_command
 
-def _get_video_filesize_yt_dlp(url: str) -> int:
-    """
-    Gets the video filesize using yt-dlp.
-    """
-    try:
-        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "-j", url])
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
-        video_info = json.loads(result.stdout)
-        return video_info.get('filesize') or video_info.get('filesize_approx') or 0
-    except Exception as e:
-        logger.error(f"An unexpected error occurred while getting video filesize with yt-dlp: {e}")
-        return 0
-
 def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
     Checks if a YouTube video is available, has subtitles, and if there is enough disk space.

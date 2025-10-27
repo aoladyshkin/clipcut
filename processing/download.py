@@ -43,11 +43,9 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     Returns a tuple (is_available, message, error_log).
     """
     # 0. Check for disk space
-    filesize = _get_video_filesize_yt_dlp(url)
-    if filesize > 0:
-        free_space = shutil.disk_usage('.').free
-        if filesize > free_space - FREESPACE_LIMIT_MB * 1024 * 1024:
-            return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
+    free_space_mb = shutil.disk_usage('.').free / (1024 * 1024)
+    if free_space_mb < FREESPACE_LIMIT_MB:
+        return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
 
     # 1. Check for video availability and subtitles
     try:

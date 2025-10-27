@@ -12,7 +12,7 @@ from conversation import get_conv_handler
 from commands import (
     menu_command, add_shorts_command, set_user_balance_command, 
     start_discount, end_discount, referral_command, remove_user_command, 
-    export_users_command, lang_command, set_language, cancel, start
+    export_users_command, lang_command, set_language, cancel, start, status_command
 )
 from handlers import (
     precheckout_callback, successful_payment_callback, handle_dislike_button, 
@@ -369,6 +369,8 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_dislike_button, pattern='^dislike$'))
     application.add_handler(CallbackQueryHandler(handle_moderation_button, pattern='^moderate_'))
     application.add_handler(CallbackQueryHandler(handle_feedback_approval, pattern='^(approve|decline)_feedback:'))
+
+    application.add_handler(CommandHandler("status", status_command))
 
     logger.info("Бот запущен и готов к работе...")
     application.run_polling()

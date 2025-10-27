@@ -147,5 +147,8 @@
     "invalid_email_format": "Invalid email format. Please enter a valid email address.",
     "broadcast_message_prompt": "Send the post to be sent to users. You can cancel the mailing with the /cancel command.",
     "broadcast_sent_confirmation": "Broadcast completed. Sent: {count}.",
-    "broadcast_w_prices_description": "Make a broadcast with prices"
+    "broadcast_w_prices_description": "Make a broadcast with prices",
+    "no_tasks_in_queue": "You have no active tasks in the queue.",
+    "your_tasks_in_queue": "Your tasks in the queue:",
+    "task_status_item": "<b>Position:</b> {position}, <b>URL:</b> {url}, <b>Generation ID:</b> {generation_id}"
 }

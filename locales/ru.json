@@ -147,5 +147,8 @@
     "invalid_email_format": "Неверный формат электронной почты. Пожалуйста, введите действительный адрес.",
     "broadcast_message_prompt": "Отправьте пост, который нужно разослать юзерам. Вы можете отменить рассылку командой /cancel.",
     "broadcast_sent_confirmation": "Рассылка завершена. Отправлено: {count}.",
-    "broadcast_w_prices_description": "Сделать рассылку с ценами"
+    "broadcast_w_prices_description": "Сделать рассылку с ценами",
+    "no_tasks_in_queue": "У вас нет активных задач в очереди.",
+    "your_tasks_in_queue": "Ваши задачи в очереди:",
+    "task_status_item": "<b>Позиция:</b> {position} | <b>URL:</b> {url} | <b>ID генерации:</b> {generation_id}"
 }

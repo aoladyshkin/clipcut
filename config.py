@@ -48,4 +48,4 @@ CRYPTO_BOT_TOKEN = os.environ.get("CRYPTO_BOT_TOKEN")
 YOOKASSA_SHOP_ID = os.environ.get("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.environ.get("YOOKASSA_SECRET_KEY")
 
-FREESPACE_LIMIT_MB = 0  # Minimum free space in MB required to process videos
+FREESPACE_LIMIT_MB = 200  # Minimum free space in MB required to process videos

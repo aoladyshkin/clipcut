@@ -134,8 +134,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             return 0, 0
 
         shorts_number = config.get('shorts_number', 'auto')
-        # shorts_timecodes = [{ "start": "00:00:00.0", "end": "00:01:00.0", "hook": "text"}]
-        shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
+        shorts_timecodes = [{ "start": "00:24:11.0", "end": "00:24:34.0", "hook": "text"}]
+        # shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:
             if status_callback:
@@ -251,10 +251,10 @@ def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_se
         # Если есть субтитры, прожигаем их
         if ass_path and os.path.exists(ass_path):
             # Устанавливаем аудио из оригинального клипа, т.к. ffmpeg его не копирует при обработке vf
-            final_clip = final_clip.set_audio(main_clip_raw.audio)
-            
+            final_clip = final_clip.set_audio(None)
+
             temp_video_path = out_dir / f"temp_short{i}.mp4"
-            final_clip.write_videofile(str(temp_video_path), fps=24, codec="libx264", audio_codec="aac")
+            final_clip.write_videofile(str(temp_video_path), fps=24, codec="libx264", audio=False)
 
             fonts_dir = "fonts"
             ffmpeg_vf = f"subtitles={str(ass_path)}:fontsdir={fonts_dir}"
@@ -262,14 +262,17 @@ def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_se
             cmd = [
                 "ffmpeg",
                 "-i", str(temp_video_path),
+                "-i", str(segment_video_path),
                 "-vf", ffmpeg_vf,
                 "-c:v", "libx264",
                 "-preset", "medium",
                 "-crf", "23",
-                "-c:a", "copy",
+                "-c:a", "aac",
+                "-map", "0:v:0",
+                "-map", "1:a:0",
                 "-y", str(output_sub)
             ]
-            
+
             try:
                 subprocess.run(cmd, check=True, capture_output=True, text=True)
             except subprocess.CalledProcessError as e:

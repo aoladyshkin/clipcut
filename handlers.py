@@ -949,7 +949,7 @@ async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_T
 
             add_to_user_balance(user_id_from_payload, amount)
             _, new_balance, _, _, _ = get_user(user_id_from_payload)
-            log_event(user_id_from_payload, 'payment_success', {'provider': 'yookassa', 'shorts_amount': amount, 'total_amount': payment.amount.value, 'currency': payment.amount.currency})
+            log_event(user_id_from_payload, 'payment_success', {'provider': 'yookassa', 'shorts_amount': amount, 'total_amount': float(payment.amount.value), 'currency': payment.amount.currency})
 
             await query.edit_message_text(
                 get_translation(lang, "payment_successful").format(amount=amount, new_balance=new_balance),

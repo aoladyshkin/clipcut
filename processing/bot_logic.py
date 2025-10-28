@@ -133,6 +133,17 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
                 status_callback(get_translation(lang, "transcription_error"))
             return 0, 0
 
+        if config.get('subtitles_type') == 'word-by-word' and not audio_only:
+            try:
+                print("INFO: Аудио не было скачано, но требуется для word-by-word субтитров. Скачиваем...")
+                audio_only = download_audio_only(url, out_dir / "audio_only.ogg")
+                if not audio_only:
+                    raise Exception(get_translation(lang, "download_error"))
+            except Exception as e:
+                if status_callback:
+                    status_callback(str(e))
+                return 0, 0
+
         shorts_number = config.get('shorts_number', 'auto')
         # shorts_timecodes = [{ "start": "00:00:00.0", "end": "00:01:00.0", "hook": "text"}]
         shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)

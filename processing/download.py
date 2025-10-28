@@ -231,29 +231,36 @@ def _find_itag_for_lang_with_yt_dlp(url, lang: str, yt_dlp_command: list):
 
 def download_video_segment(url: str, output_path: str, start_time: float, end_time: float):
     """
-    Downloads a specific segment of a YouTube video using the yt-dlp library with ffmpeg as an external downloader.
-    This implementation is based on the user-provided working example.
+    Downloads a specific segment of a YouTube video using yt-dlp and ffmpeg.
+    -ss is used as an input option for fast seeking.
+    The segment is re-encoded to prevent frozen frames at the beginning.
     """
     output_path = str(output_path)
     duration = end_time - start_time
 
     ydl_opts = {
-        # Using a pre-merged format as in the example to ensure stability
         'format': 'best[height<=1080][ext=mp4]/best[ext=mp4]',
         'outtmpl': output_path,
         'external_downloader': 'ffmpeg',
-        'external_downloader_args': [
-            '-ss', str(start_time),
-            '-t', str(duration),
-            '-avoid_negative_ts', 'make_zero'
-        ]
+        'external_downloader_args': {
+            'ffmpeg_i': [
+                '-ss', str(start_time)
+            ],
+            'default': [
+                '-t', str(duration),
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-preset', 'fast',
+                '-avoid_negative_ts', 'make_zero'
+            ]
+        }
     }
 
     if YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
         ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
 
     try:
-        print(f"Downloading segment from {start_time} to {end_time} using yt-dlp library...")
+        print(f"Downloading segment from {start_time} to {end_time} using yt-dlp and ffmpeg...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         
@@ -261,7 +268,10 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
         return output_path
         
     except Exception as e:
-        logger.error(f"yt-dlp library failed to download segment: {e}", exc_info=True)
+        # The original error message from yt-dlp can be verbose, let's log it but raise a cleaner one.
+        error_message = str(e)
+        logger.error(f"yt-dlp/ffmpeg failed to download segment: {error_message}", exc_info=True)
+        # Re-raise with a more user-friendly message if needed, or just raise to propagate.
         raise
 
 def download_audio_only(url, audio_path):

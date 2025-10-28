@@ -94,21 +94,35 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     # чтобы избежать пустых результатов на очень больших файлах
     _wait_vector_store_ready(vs.id)
 
-    # 3) вызываем Responses API с подключённым file_search и нашим vector_store
-    resp = client.responses.create(
-        model="gpt-5",
-        input=[{"role": "user", "content": prompt}],
-        tools=[
-            {
-                "type": "file_search",
-                "vector_store_ids": [vs.id],
-            }
-        ],
-    )
+    last_error = None
+    data = None
+    for attempt in range(2):
+        try:
+            # 3) вызываем Responses API с подключённым file_search и нашим vector_store
+            resp = client.responses.create(
+                model="gpt-5",
+                input=[{"role": "user", "content": prompt}],
+                tools=[
+                    {
+                        "type": "file_search",
+                        "vector_store_ids": [vs.id],
+                    }
+                ],
+            )
 
-    raw = _response_text(resp)
-    json_str = _extract_json_array(raw)
-    data = json.loads(json_str)
+            raw = _response_text(resp)
+            json_str = _extract_json_array(raw)
+            data = json.loads(json_str)
+            
+            # Если дошли до сюда, то всё успешно
+            break 
+
+        except ValueError as e:
+            logger.warning(f"Попытка {attempt + 1} не удалась: в ответе GPT не найден JSON. Ошибка: {e}")
+            last_error = e
+    
+    if data is None:
+        raise last_error
 
     # --- Post-processing --- 
     caption_segments = _parse_captions(captions_path)

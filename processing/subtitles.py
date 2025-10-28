@@ -324,11 +324,12 @@ def get_subtitle_items(subtitles_type: str,
     items: List[Dict[str, Any]] = []
 
     if subtitles_type == "word-by-word":
-        chunk_path, offset = _extract_wav_pcm(audio_path, start_cut, end_cut, pad=AUDIO_PAD_SEC)
+        # audio_path is the path to the video segment. No need to extract a chunk.
+        offset = start_cut
         try:
             # Минимальный и стабильный вызов распознавания:
             segments, _ = faster_whisper_model.transcribe(
-                chunk_path,
+                str(audio_path),
                 task="transcribe",
                 word_timestamps=True,
                 beam_size=5,
@@ -344,12 +345,9 @@ def get_subtitle_items(subtitles_type: str,
                 ref_tokens = _build_reference_tokens(transcript_segments, start_cut, end_cut)
                 if ref_tokens:
                     items = _snap_items_to_reference(items, ref_tokens, REF_SNAP_SIM_THRESHOLD)
-
-        finally:
-            try:
-                os.remove(chunk_path)
-            except Exception: 
-                pass
+        except Exception as e:
+            logger.error(f"Error during word-by-word transcription for {audio_path}: {e}")
+            return [] # Return empty list on error
 
     else:  # 'phrases'
         for ts in transcript_segments:

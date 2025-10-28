@@ -6,7 +6,7 @@ from clickhouse_driver import Client
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-table_name = os.environ.get("ANALYTICS_TABLE_NAME", "sf_events")
+table_name = os.environ.get("ANALYTICS_TABLE_NAME", "dev_sf_events")
 
 
 def get_clickhouse_client():

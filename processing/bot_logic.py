@@ -133,17 +133,6 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
                 status_callback(get_translation(lang, "transcription_error"))
             return 0, 0
 
-        if config.get('subtitles_type') == 'word-by-word' and not audio_only:
-            try:
-                print("INFO: Аудио не было скачано, но требуется для word-by-word субтитров. Скачиваем...")
-                audio_only = download_audio_only(url, out_dir / "audio_only.ogg")
-                if not audio_only:
-                    raise Exception(get_translation(lang, "download_error"))
-            except Exception as e:
-                if status_callback:
-                    status_callback(str(e))
-                return 0, 0
-
         shorts_number = config.get('shorts_number', 'auto')
         # shorts_timecodes = [{ "start": "00:00:00.0", "end": "00:01:00.0", "hook": "text"}]
         shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
@@ -187,8 +176,6 @@ def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_se
 
     # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':
-        if not audio_path or not audio_path.exists():
-            raise ValueError("Для 'word-by-word' субтитров необходим аудиофайл, но он не был скачан.")
         faster_whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
 
     for i, short in enumerate(shorts_timecodes, 1):
@@ -228,26 +215,23 @@ def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_se
         ass_path = None
         if subtitles_type != 'no_subtitles':
             # --- Создание субтитров ---
-            # Для 'word-by-word' нужен аудиофайл. Для остальных - нет.
-            if subtitles_type == 'word-by-word' and (not audio_path or not audio_path.exists()):
-                 print(f"Пропускаем 'word-by-word' субтитры для клипа {i}, т.к. аудиофайл отсутствует.")
-                 ass_path = None
-            else:
-                subtitle_items = get_subtitle_items(
-                    subtitles_type, current_transcript_segments, audio_path, start_cut, end_cut, 
-                    faster_whisper_model)
-                
-                ass_path = out_dir / f"short{i}.ass"
-                create_ass_subtitles(
-                    subtitle_items, 
-                    str(ass_path),
-                    final_width,
-                    final_height,
-                    subtitle_y_pos, 
-                    subtitle_width, 
-                    config.get('subtitle_style', 'white'),
-                    subtitles_type
-                )
+            audio_for_subtitles = segment_video_path if subtitles_type == 'word-by-word' else audio_path
+            
+            subtitle_items = get_subtitle_items(
+                subtitles_type, current_transcript_segments, audio_for_subtitles, start_cut, end_cut, 
+                faster_whisper_model)
+            
+            ass_path = out_dir / f"short{i}.ass"
+            create_ass_subtitles(
+                subtitle_items, 
+                str(ass_path),
+                final_width,
+                final_height,
+                subtitle_y_pos, 
+                subtitle_width, 
+                config.get('subtitle_style', 'white'),
+                subtitles_type
+            )
 
         if config.get('add_banner'):
             banner_path = 'banner.png'

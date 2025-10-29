@@ -304,20 +304,11 @@ async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return GET_BROADCAST_MESSAGE
 
 
-async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Sends a broadcast message to all users, respecting rate limits."""
-    text = update.message.text
-    entities = update.message.entities
-    caption = update.message.caption
-    caption_entities = update.message.caption_entities
-    photo = update.message.photo[-1].file_id if update.message.photo else None
-    animation = update.message.animation.file_id if update.message.animation else None
-
+async def _send_broadcast(context: ContextTypes.DEFAULT_TYPE, admin_chat_id: int, text: str, entities, caption: str, caption_entities, photo: str, animation: str):
+    """Helper function to send broadcast messages in the background."""
     user_ids = get_all_user_ids()
     sent_count = 0
     failed_count = 0
-
-    await update.message.reply_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
 
     for user_id in user_ids:
         try:
@@ -334,7 +325,30 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         
         await asyncio.sleep(0.04) # ~25 messages per second
 
-    await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+    await context.bot.send_message(chat_id=admin_chat_id, text=f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+
+
+async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the broadcast message task in the background."""
+    text = update.message.text
+    entities = update.message.entities
+    caption = update.message.caption
+    caption_entities = update.message.caption_entities
+    photo = update.message.photo[-1].file_id if update.message.photo else None
+    animation = update.message.animation.file_id if update.message.animation else None
+
+    asyncio.create_task(_send_broadcast(
+        context=context,
+        admin_chat_id=update.effective_chat.id,
+        text=text,
+        entities=entities,
+        caption=caption,
+        caption_entities=caption_entities,
+        photo=photo,
+        animation=animation
+    ))
+
+    await update.message.reply_text(f"Начинаю фоновую рассылку для {len(get_all_user_ids())} пользователей...")
     return ConversationHandler.END
 
 
@@ -346,9 +360,31 @@ async def broadcast_w_prices_start(update: Update, context: ContextTypes.DEFAULT
     return GET_BROADCAST_W_PRICES_MESSAGE
 
 
+async def _send_broadcast_w_prices(context: ContextTypes.DEFAULT_TYPE, admin_chat_id: int, message_text: str, entities, caption: str, caption_entities, photo: str, animation: str, reply_markup: InlineKeyboardMarkup):
+    """Helper function to send broadcast messages with prices in the background."""
+    user_ids = get_all_user_ids()
+    sent_count = 0
+    failed_count = 0
+
+    for user_id in user_ids:
+        try:
+            if photo:
+                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=caption, caption_entities=caption_entities, reply_markup=reply_markup)
+            elif animation:
+                await context.bot.send_animation(chat_id=user_id, animation=animation, caption=caption, caption_entities=caption_entities, reply_markup=reply_markup)
+            elif message_text:
+                await context.bot.send_message(chat_id=user_id, text=message_text, entities=entities, reply_markup=reply_markup)
+            sent_count += 1
+        except TelegramError as e:
+            logger.error(f"Failed to send message to {user_id}: {e}")
+            failed_count += 1
+        await asyncio.sleep(0.04)  # ~25 messages per second
+
+    await context.bot.send_message(chat_id=admin_chat_id, text=f"Рассылка с ценами завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+
+
 async def broadcast_w_prices_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Sends a broadcast message with prices to all users, respecting rate limits."""
-    
+    """Starts the broadcast message with prices task in the background."""
     message_text = update.message.text
     entities = update.message.entities
     caption = update.message.caption
@@ -376,23 +412,19 @@ async def broadcast_w_prices_message(update: Update, context: ContextTypes.DEFAU
     
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    user_ids = get_all_user_ids()
-    sent_count = 0
-    failed_count = 0
-    for user_id in user_ids:
-        try:
-            if photo:
-                await context.bot.send_photo(chat_id=user_id, photo=photo, caption=caption, caption_entities=caption_entities, reply_markup=reply_markup)
-            elif animation:
-                await context.bot.send_animation(chat_id=user_id, animation=animation, caption=caption, caption_entities=caption_entities, reply_markup=reply_markup)
-            elif message_text:
-                await context.bot.send_message(chat_id=user_id, text=message_text, entities=entities, reply_markup=reply_markup)
-            sent_count += 1
-        except TelegramError as e:
-            logger.error(f"Failed to send message to {user_id}: {e}")
-            failed_count += 1
+    asyncio.create_task(_send_broadcast_w_prices(
+        context=context,
+        admin_chat_id=update.effective_chat.id,
+        message_text=message_text,
+        entities=entities,
+        caption=caption,
+        caption_entities=caption_entities,
+        photo=photo,
+        animation=animation,
+        reply_markup=reply_markup
+    ))
 
-    await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+    await update.message.reply_text(f"Начинаю фоновую рассылку с ценами для {len(get_all_user_ids())} пользователей...")
     return ConversationHandler.END
 
 
@@ -415,24 +447,10 @@ async def broadcast_to_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("Неверный формат ID. Пожалуйста, укажите ID пользователей через запятую. Например: /broadcast_to 123,456,789")
         return ConversationHandler.END
 
-async def broadcast_to_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Sends a broadcast message to a specific list of users."""
-    text = update.message.text
-    entities = update.message.entities
-    caption = update.message.caption
-    caption_entities = update.message.caption_entities
-    photo = update.message.photo[-1].file_id if update.message.photo else None
-    animation = update.message.animation.file_id if update.message.animation else None
-
-    user_ids = context.user_data.get('broadcast_to_ids', [])
-    if not user_ids:
-        await update.message.reply_text("Не найдены ID пользователей для рассылки.")
-        return ConversationHandler.END
-
+async def _send_broadcast_to(context: ContextTypes.DEFAULT_TYPE, admin_chat_id: int, user_ids: list, text: str, entities, caption: str, caption_entities, photo: str, animation: str):
+    """Helper function to send targeted broadcast messages in the background."""
     sent_count = 0
     failed_count = 0
-
-    await update.message.reply_text(f"Начинаю рассылку для {len(user_ids)} пользователей...")
 
     for user_id in user_ids:
         try:
@@ -446,10 +464,38 @@ async def broadcast_to_message(update: Update, context: ContextTypes.DEFAULT_TYP
         except TelegramError as e:
             logger.error(f"Failed to send message to {user_id}: {e}")
             failed_count += 1
-        
-        await asyncio.sleep(0.04) # ~25 messages per second
+        await asyncio.sleep(0.04)  # ~25 messages per second
 
-    await update.message.reply_text(f"Рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+    await context.bot.send_message(chat_id=admin_chat_id, text=f"Целевая рассылка завершена. Отправлено: {sent_count}. Ошибок: {failed_count}.")
+
+
+async def broadcast_to_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Starts the targeted broadcast message task in the background."""
+    text = update.message.text
+    entities = update.message.entities
+    caption = update.message.caption
+    caption_entities = update.message.caption_entities
+    photo = update.message.photo[-1].file_id if update.message.photo else None
+    animation = update.message.animation.file_id if update.message.animation else None
+
+    user_ids = context.user_data.get('broadcast_to_ids', [])
+    if not user_ids:
+        await update.message.reply_text("Не найдены ID пользователей для рассылки.")
+        return ConversationHandler.END
+
+    asyncio.create_task(_send_broadcast_to(
+        context=context,
+        admin_chat_id=update.effective_chat.id,
+        user_ids=user_ids,
+        text=text,
+        entities=entities,
+        caption=caption,
+        caption_entities=caption_entities,
+        photo=photo,
+        animation=animation
+    ))
+
+    await update.message.reply_text(f"Начинаю фоновую целевую рассылку для {len(user_ids)} пользователей...")
     return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:

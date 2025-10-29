@@ -42,7 +42,8 @@ from pricing import DEMO_CONFIG
 from config import (
     FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, 
     ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK,
-    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, ADMIN_USER_TAG, MODERATORS_USER_TAGS
+    YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, ADMIN_USER_TAG, MODERATORS_USER_TAGS,
+    MAX_SHORTS_PER_VIDEO
 )
 from processing.demo import simulate_demo_processing
 
@@ -332,7 +333,13 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
             context.user_data['error_message_id'] = msg.message_id
             await resend_prompt(context)
             return GET_SHORTS_NUMBER
-        
+
+        if number > MAX_SHORTS_PER_VIDEO:
+            msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=get_translation(lang, "max_shorts_exceeded").format(max_shorts=MAX_SHORTS_PER_VIDEO))
+            context.user_data['error_message_id'] = msg.message_id
+            await resend_prompt(context)
+            return GET_SHORTS_NUMBER
+
         if number > balance:
             topup_keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]

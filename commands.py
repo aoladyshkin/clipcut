@@ -57,11 +57,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id, 'source': source})
         if referrer_id and referrer_id != user_id:
             # Award bonuses
-            add_to_user_balance(user_id, 10)
             add_to_user_balance(referrer_id, 10)
-            
-            # Update local balance for the new user
-            balance += 10
             
             await message.reply_text(get_translation(lang, "welcome_referral_bonus"))
             

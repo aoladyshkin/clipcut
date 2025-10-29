@@ -2,8 +2,9 @@ import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import ContextTypes, ConversationHandler
 import uuid
+import json
 from telegram.error import TimedOut, BadRequest
-from database import get_user, update_user_balance, add_to_user_balance
+from database import get_user, update_user_balance, add_to_user_balance, add_task_to_queue, get_queue_position
 import os
 import asyncio
 import yookassa
@@ -651,9 +652,10 @@ async def get_banner_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return CONFIRM_CONFIG
 
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Adds a task to the queue after confirmation."""
+    """Adds a task to the database queue after confirmation."""
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
     lang = context.user_data.get('lang', 'en')
 
     balance = context.user_data.get('balance', 0)
@@ -670,36 +672,42 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             )
             return ConversationHandler.END
     elif shorts_number == 'auto':
-        # In "auto" mode, we don't know the exact number.
-        # We could either charge the maximum or check later.
-        # For now, we just proceed if balance > 0, which is already checked in start.
         pass
 
     generation_id = context.user_data.get('generation_id')
+    
+    # Convert user_data to a serializable format (JSON string)
+    serializable_user_data = json.dumps(context.user_data.copy())
 
+    # Add task to the database queue
+    task_id = add_task_to_queue(
+        user_id=user_id,
+        chat_id=query.message.chat.id,
+        status_message_id=query.message.message_id,
+        user_data=serializable_user_data
+    )
+    
+    # Put the task into the in-memory queue for the worker
     processing_queue = context.bot_data['processing_queue']
-    task_data = {
-        'chat_id': query.message.chat.id,
-        'user_data': context.user_data.copy(),
-        'status_message_id': query.message.message_id
-    }
+    task_tuple = (task_id, user_id, query.message.chat.id, serializable_user_data, query.message.message_id)
+    await processing_queue.put(task_tuple)
+    
+    queue_position = get_queue_position(task_id)
 
     event_data = {
         'url': context.user_data['url'],
         'config': context.user_data['config'],
         'generation_id': generation_id,
-        'queue_position': processing_queue.qsize() + 1
+        'queue_position': queue_position
     }
-    log_event(query.message.chat.id, 'generation_queued', event_data)
+    log_event(user_id, 'generation_queued', event_data)
     
-    await processing_queue.put(task_data)
-    
-    logger.info(f"Task for chat {query.message.chat.id} added to the queue. Tasks in queue: {processing_queue.qsize()}")
+    logger.info(f"Task {task_id} for user {user_id} added to the DB and in-memory queue at position {queue_position}")
 
     settings_text = format_config(context.user_data['config'], balance, lang=lang)
     url = context.user_data['url']
     await query.edit_message_text(
-        text=get_translation(lang, "request_queued_message").format(queue_position=processing_queue.qsize(), url=url, settings_text=settings_text),
+        text=get_translation(lang, "request_queued_message").format(queue_position=queue_position, url=url, settings_text=settings_text),
         parse_mode="HTML",
         disable_web_page_preview=True
     )

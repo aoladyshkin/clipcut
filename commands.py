@@ -4,7 +4,7 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
-from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language
+from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language, get_user_tasks_from_queue, get_queue_position
 from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE, GET_BROADCAST_W_PRICES_MESSAGE, GET_BROADCAST_W_PRICES_MESSAGE
 from config import TUTORIAL_LINK, ADMIN_USER_IDS, REFERRAL_BONUS
@@ -14,6 +14,7 @@ from pricing import get_package_prices
 
 import csv
 import io
+import json
 from database import get_all_users_data
 
 # Configure logging
@@ -552,51 +553,30 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     _, _, _, lang, _ = get_user(user_id)
 
-    processing_queue = context.application.bot_data.get('processing_queue')
-    if not processing_queue or processing_queue.empty():
+    user_tasks_from_db = get_user_tasks_from_queue(user_id)
+
+    if not user_tasks_from_db:
         await update.message.reply_text(get_translation(lang, "no_tasks_in_queue"))
         return
 
-    queue_size = processing_queue.qsize()
-    temp_items = []
-    
-    try:
-        # Atomically drain the queue for inspection. This is safer.
-        for _ in range(queue_size):
-            try:
-                temp_items.append(processing_queue.get_nowait())
-            except asyncio.QueueEmpty:
-                # This can happen in a race condition where a worker gets a task
-                # between the qsize() check and this loop.
-                break 
+    user_tasks = []
+    for task_id, user_data_json in user_tasks_from_db:
+        position = get_queue_position(task_id)
+        user_data = json.loads(user_data_json)
+        user_tasks.append({
+            'position': position,
+            'url': user_data.get('url', 'N/A'),
+            'generation_id': user_data.get('generation_id', 'N/A')
+        })
 
-        user_tasks = []
-        for i, task_data in enumerate(temp_items):
-            if task_data['chat_id'] == user_id:
-                user_tasks.append({
-                    'position': i + 1,
-                    'url': task_data['user_data'].get('url', 'N/A'),
-                    'generation_id': task_data['user_data'].get('generation_id', 'N/A')
-                })
-
-        if not user_tasks:
-            await update.message.reply_text(get_translation(lang, "no_tasks_in_queue"))
-            return
-
-        response_messages = [get_translation(lang, "your_tasks_in_queue")]
-        for task in user_tasks:
-            response_messages.append(
-                get_translation(lang, "task_status_item").format(
-                    position=task['position'],
-                    url=task['url'],
-                    generation_id=task['generation_id']
-                )
+    response_messages = [get_translation(lang, "your_tasks_in_queue")]
+    for task in user_tasks:
+        response_messages.append(
+            "\n\n" + get_translation(lang, "task_status_item").format(
+                position=task['position'],
+                url=task['url']
+                # generation_id=task['generation_id']
             )
-        
-        await update.message.reply_text("\n".join(response_messages), parse_mode="HTML", disable_web_page_preview=True)
-
-    finally:
-        # This block will execute even if the task is cancelled,
-        # ensuring all items are returned to the queue.
-        for item in temp_items:
-            await processing_queue.put(item)
+        )
+    
+    await update.message.reply_text("\n".join(response_messages), parse_mode="HTML", disable_web_page_preview=True)

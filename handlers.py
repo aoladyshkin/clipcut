@@ -908,8 +908,9 @@ async def get_yookassa_email(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     payment_url = payment.confirmation.confirmation_url
     payment_id = payment.id
+    context.user_data['yookassa_payment_id'] = payment_id
 
-    payload = f"check_yookassa:{user_id}:{amount}:{payment_id}"
+    payload = f"check_yookassa:{user_id}:{amount}"
 
     keyboard = [
         [InlineKeyboardButton(get_translation(lang, "pay_button"), url=payment_url)],
@@ -939,9 +940,14 @@ async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_T
     _, _, _, lang, _ = get_user(user_id)
 
     try:
-        identifier, user_id_str, amount_str, payment_id = query.data.split(':')
+        identifier, user_id_str, amount_str = query.data.split(':')
         user_id_from_payload = int(user_id_str)
         amount = int(amount_str)
+        payment_id = context.user_data.get('yookassa_payment_id')
+
+        if not payment_id:
+            await query.edit_message_text(get_translation(lang, "payment_check_error"))
+            return YOOKASSA_PAYMENT
 
         Configuration.configure(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
         payment = await asyncio.to_thread(yookassa.Payment.find_one, payment_id)

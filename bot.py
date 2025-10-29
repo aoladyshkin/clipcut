@@ -3,9 +3,10 @@ import logging
 import asyncio
 import traceback
 import html
+import json
 
 from telegram import Update, Bot, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes, ConversationHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, PreCheckoutQueryHandler, CallbackQueryHandler, ContextTypes, ConversationHandler, PicklePersistence
 import telegram.error
 
 from conversation import get_conv_handler
@@ -28,7 +29,7 @@ from config import (
     DELETE_OUTPUT_AFTER_SENDING, ADMIN_GROUP_ID, ADMIN_USER_TAG
 )
 from localization import get_translation
-from database import get_user
+from database import get_user, add_task_to_queue, get_pending_tasks, remove_task_from_queue
 
 # Настройка логирования
 logging.basicConfig(
@@ -137,14 +138,14 @@ async def send_video(bot: Bot, chat_id: int, file_path: str, caption: str, edit_
 async def processing_worker(queue: asyncio.Queue, application: Application):
     """Воркер, который обрабатывает видео из очереди."""
     while True:
-        task_data = await queue.get()
-        chat_id = task_data['chat_id']
-        user_data = task_data['user_data']
-        status_message_id = task_data.get('status_message_id')
+        task_id, user_id, chat_id, user_data_json, status_message_id = await queue.get()
+        user_data = json.loads(user_data_json)
         
         try:
-            logger.info(f"Начинаю обработку задачи для чата {chat_id}")
+            logger.info(f"Начинаю обработку задачи {task_id} для чата {chat_id}")
             await run_processing(chat_id, user_data, application, status_message_id)
+            remove_task_from_queue(task_id)
+            logger.info(f"Задача {task_id} успешно обработана и удалена из базы данных.")
         except Exception as e:
             logger.error(f"Ошибка в воркере для чата {chat_id}: {e}", exc_info=True)
             try:
@@ -298,6 +299,12 @@ async def post_init_hook(application: Application):
     processing_queue = asyncio.Queue()
     application.bot_data['processing_queue'] = processing_queue
 
+    # Загружаем невыполненные задачи из базы данных
+    pending_tasks = get_pending_tasks()
+    for task in pending_tasks:
+        await processing_queue.put(task)
+    logger.info(f"Загружено {len(pending_tasks)} невыполненных задач из базы данных.")
+
     # Запускаем воркеры в зависимости от MAX_CONCURRENT_TASKS
     max_concurrent_tasks = MAX_CONCURRENT_TASKS
 
@@ -317,7 +324,10 @@ def main():
         logger.critical("Ошибка: Токен бота не найден. Установите переменную окружения TELEGRAM_BOT_TOKEN.")
         return
 
-    application = Application.builder().token(token).post_init(post_init_hook).build()
+    # Create persistence object
+    persistence = PicklePersistence(filepath="data/conversation_persistence.pkl")
+
+    application = Application.builder().token(token).persistence(persistence).post_init(post_init_hook).build()
 
     # Register the error handler
     application.add_error_handler(error_handler)

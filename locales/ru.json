@@ -149,6 +149,6 @@
     "broadcast_sent_confirmation": "Рассылка завершена. Отправлено: {count}.",
     "broadcast_w_prices_description": "Сделать рассылку с ценами",
     "no_tasks_in_queue": "У вас нет активных задач в очереди.",
-    "your_tasks_in_queue": "Ваши задачи в очереди:",
-    "task_status_item": "<b>Позиция:</b> {position} | <b>URL:</b> {url} | <b>ID генерации:</b> {generation_id}"
+    "your_tasks_in_queue": "<b>Ваши задачи в очереди:</b>",
+    "task_status_item": "<b>Позиция:</b> {position}\n<b>URL:</b> {url}"
 }

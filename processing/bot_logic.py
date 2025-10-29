@@ -30,6 +30,62 @@ logger = logging.getLogger(__name__)
 
 
 
+
+
+
+
+_whisper_model = None
+
+
+
+
+
+
+
+def get_whisper_model():
+
+
+
+    """Initializes and returns a singleton WhisperModel instance."""
+
+
+
+    global _whisper_model
+
+
+
+    if _whisper_model is None:
+
+
+
+        logger.info("Initializing Whisper model for the first time...")
+
+
+
+        # Using "small" model. For better quality, "medium" can be used.
+
+
+
+        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+
+
+
+        logger.info("Whisper model initialized.")
+
+
+
+    return _whisper_model
+
+
+
+
+
+
+
+
+
+
+
 def get_unique_output_dir(base="output"):
     n = 1
     while True:
@@ -176,7 +232,7 @@ def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_se
 
     # --- Инициализация faster-whisper (если нужно) ---
     if subtitles_type == 'word-by-word':
-        faster_whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+        faster_whisper_model = get_whisper_model()
 
     for i, short in enumerate(shorts_timecodes, 1):
         start_cut = to_seconds(short["start"])

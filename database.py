@@ -1,5 +1,6 @@
 import sqlite3
 from typing import Optional, Tuple
+from config import FREE_SHORTS_ON_START
 
 DB_FILE = "data/clipcut.db"
 
@@ -7,10 +8,10 @@ def initialize_database():
     """Инициализирует базу данных и создает таблицу, если она не существует."""
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
-                balance INTEGER NOT NULL DEFAULT 10,
+                balance INTEGER NOT NULL DEFAULT {FREE_SHORTS_ON_START},
                 generated_shorts_count INTEGER NOT NULL DEFAULT 0,
                 referred_by INTEGER,
                 source TEXT,
@@ -52,10 +53,10 @@ def get_user(user_id: int, referrer_id: Optional[int] = None, source: Optional[s
         user = cursor.fetchone()
         if user is None:
             # Пользователь не найден, создаем нового
-            cursor.execute("INSERT INTO users (user_id, referred_by, source, language) VALUES (?, ?, ?, ?)", (user_id, referrer_id, source, 'ru'))
+            cursor.execute("INSERT INTO users (user_id, balance, referred_by, source, language) VALUES (?, ?, ?, ?, ?)", (user_id, FREE_SHORTS_ON_START, referrer_id, source, 'ru'))
             conn.commit()
             # Возвращаем данные нового пользователя
-            return user_id, 10, 0, 'ru', True
+            return user_id, FREE_SHORTS_ON_START, 0, 'ru', True
         return user + (False,)
 
 def set_user_language(user_id: int, language_code: str):

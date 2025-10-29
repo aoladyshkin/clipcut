@@ -7,7 +7,7 @@ from telegram.error import TelegramError
 from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language
 from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE, GET_BROADCAST_W_PRICES_MESSAGE, GET_BROADCAST_W_PRICES_MESSAGE
-from config import TUTORIAL_LINK, ADMIN_USER_IDS
+from config import TUTORIAL_LINK, ADMIN_USER_IDS, REFERRAL_BONUS
 from datetime import datetime, timezone
 from localization import get_translation
 from pricing import get_package_prices
@@ -57,9 +57,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id, 'source': source})
         if referrer_id and referrer_id != user_id:
             # Award bonuses
-            add_to_user_balance(referrer_id, 10)
+            add_to_user_balance(user_id, REFERRAL_BONUS)
+            add_to_user_balance(referrer_id, REFERRAL_BONUS)
             
-            await message.reply_text(get_translation(lang, "welcome_referral_bonus"))
+            await message.reply_text(get_translation(lang, "welcome_referral_bonus").format(bonus_amount=REFERRAL_BONUS))
             
             try:
                 # Try to get the new user's username to mention them
@@ -67,7 +68,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 _, _, _, referrer_lang, _ = get_user(referrer_id)
                 await context.bot.send_message(
                     chat_id=referrer_id,
-                    text=get_translation(referrer_lang, "friend_joined_referral_bonus").format(new_user_mention=new_user_mention)
+                    text=get_translation(referrer_lang, "friend_joined_referral_bonus").format(new_user_mention=new_user_mention, bonus_amount=REFERRAL_BONUS)
                 )
             except Exception as e:
                 logger.error(f"Failed to send referral notification to {referrer_id}: {e}")
@@ -151,7 +152,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     
     await update.message.reply_text(
-        get_translation(lang, "referral_message").format(referral_link=referral_link),
+        get_translation(lang, "referral_message").format(bonus_amount=REFERRAL_BONUS, referral_link=referral_link),
         parse_mode="Markdown"
     )
 
@@ -216,7 +217,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     
-    message_text += "\n\n" + get_translation(lang, "referral_message").format(referral_link=referral_link)
+    message_text += "\n\n" + get_translation(lang, "referral_message").format(bonus_amount=REFERRAL_BONUS, referral_link=referral_link)
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     

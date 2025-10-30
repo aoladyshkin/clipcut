@@ -198,10 +198,12 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             original_rub = package['original_rub']
             stars = package['stars']
             usdt = package['usdt']
+            button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
+            if package.get('price_per_item'):
+                button_text += f" | {package['price_per_item']}₽/шт"
+            
             if package['highlight']:
-                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub) + " 🔥"
-            else:
-                button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
+                button_text = "🔥 " + button_text + " 🔥"
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     else:
@@ -211,10 +213,12 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             rub = package['rub']
             stars = package['stars']
             usdt = package['usdt']
+            button_text = get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub)
+            if package.get('price_per_item'):
+                button_text += f" | {package['price_per_item']}₽/шт"
+
             if package['highlight']:
-                button_text = "🔥 " + get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub) + " 🔥"
-            else:
-                button_text = get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub)
+                button_text = "🔥 " + button_text + " 🔥"
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     

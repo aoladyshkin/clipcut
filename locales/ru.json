@@ -150,5 +150,6 @@
     "broadcast_w_prices_description": "Сделать рассылку с ценами",
     "no_tasks_in_queue": "У вас нет активных задач в очереди.",
     "your_tasks_in_queue": "<b>Ваши задачи в очереди:</b>",
-    "task_status_item": "<b>Позиция:</b> {position}\n<b>URL:</b> {url}"
+    "task_status_item": "<b>Позиция:</b> {position}\n<b>URL:</b> {url}",
+    "max_shorts_exceeded": "Вы не можете создать более {max_shorts} шортсов за раз."
 }

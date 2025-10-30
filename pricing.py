@@ -5,14 +5,11 @@ RUB_TO_STARS_RATE = 100/180  # 100 Stars = 180 RUB
 
 
 PACKAGES = [
-    {"shorts": 1, "rub": 49, "discount_rub": 24, "highlight": False}, # 39
-    {"shorts": 3, "rub": 139, "discount_rub": 54, "highlight": False}, # 109
-    {"shorts": 5, "rub": 219, "discount_rub": 109, "highlight": False}, # 169
-    {"shorts": 10, "rub": 409, "discount_rub": 159, "highlight": False}, # 319
-    {"shorts": 25, "rub": 949, "discount_rub": 379, "highlight": True}, # 739
-    {"shorts": 50, "rub": 1790, "discount_rub": 719, "highlight": False}, # 1390
-    {"shorts": 70, "rub": 2290, "discount_rub": 919, "highlight": False}, # 1690
-    {"shorts": 100, "rub": 2990, "discount_rub": 1199, "highlight": False}, # 1990
+    {"shorts": 5, "rub": 139, "discount_rub": 109, "highlight": False}, # 169
+    {"shorts": 10, "rub": 269, "discount_rub": 159, "highlight": False}, # 319
+    {"shorts": 25, "rub": 649, "discount_rub": 379, "highlight": True}, # 739
+    {"shorts": 50, "rub": 1190, "discount_rub": 719, "highlight": False}, # 1390
+    {"shorts": 100, "rub": 1990, "discount_rub": 1199, "highlight": False}, # 1990
 ]
 
 def get_package_prices(discount_active: bool = False) -> list:

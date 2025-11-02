@@ -455,7 +455,8 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         await context.bot.send_message(
             chat_id=query.message.chat_id,
             text=get_translation(lang, "ask_face_tracking"),
-            reply_markup=reply_markup
+            reply_markup=reply_markup,
+            parse_mode="HTML"
         )
         return GET_FACE_TRACKING
 

@@ -776,7 +776,7 @@ async def broadcast_topup_package_selection(update: Update, context: ContextType
     context.user_data['lang'] = lang
 
     package_data = query.data.split('_')
-    shorts = int(package_data[-1])
+    shorts = int(float(package_data[-1]))
 
     # Get the current prices
     discount_active = context.bot_data.get('discount_active', False)
@@ -821,7 +821,7 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     _, _, _, lang, _ = get_user(user_id)
 
     package_data = query.data.split('_')
-    shorts = int(package_data[-1])
+    shorts = int(package_data[2])
 
     # Get the current prices
     discount_active = context.bot_data.get('discount_active', False)

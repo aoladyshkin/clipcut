@@ -38,7 +38,8 @@ from states import (
     YOOKASSA_PAYMENT
 )
 from datetime import datetime, timezone
-from pricing import DEMO_CONFIG
+from pricing import DEMO_CONFIG, get_package_prices
+from datetime import datetime, timezone
 from config import (
     FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, 
     ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK,
@@ -775,13 +776,22 @@ async def broadcast_topup_package_selection(update: Update, context: ContextType
     context.user_data['lang'] = lang
 
     package_data = query.data.split('_')
-    shorts = int(package_data[2])
-    rub = float(package_data[3])
-    stars = int(package_data[4])
-    usdt = float(package_data[5])
+    shorts = int(package_data[-1])
 
-    # Start a new conversation context for this user
-    context.user_data['topup_package'] = {'shorts': shorts, 'rub': rub, 'stars': stars, 'usdt': usdt}
+    # Get the current prices
+    discount_active = context.bot_data.get('discount_active', False)
+    discount_end_time = context.bot_data.get('discount_end_time')
+    is_discount_time = discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time
+    packages = get_package_prices(discount_active=is_discount_time)
+
+    # Find the selected package
+    selected_package = next((p for p in packages if p['shorts'] == shorts), None)
+
+    if not selected_package:
+        await query.message.reply_text(get_translation(lang, "something_went_wrong"))
+        return ConversationHandler.END
+
+    context.user_data['topup_package'] = selected_package
     log_event(user_id, 'topup_package_selected_from_broadcast', {'package': context.user_data['topup_package']})
 
     keyboard = [
@@ -811,12 +821,22 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     _, _, _, lang, _ = get_user(user_id)
 
     package_data = query.data.split('_')
-    shorts = int(package_data[2])
-    rub = float(package_data[3])
-    stars = int(package_data[4])
-    usdt = float(package_data[5])
+    shorts = int(package_data[-1])
 
-    context.user_data['topup_package'] = {'shorts': shorts, 'rub': rub, 'stars': stars, 'usdt': usdt}
+    # Get the current prices
+    discount_active = context.bot_data.get('discount_active', False)
+    discount_end_time = context.bot_data.get('discount_end_time')
+    is_discount_time = discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time
+    packages = get_package_prices(discount_active=is_discount_time)
+
+    # Find the selected package
+    selected_package = next((p for p in packages if p['shorts'] == shorts), None)
+
+    if not selected_package:
+        await query.edit_message_text(get_translation(lang, "something_went_wrong"))
+        return ConversationHandler.END
+
+    context.user_data['topup_package'] = selected_package
     log_event(user_id, 'topup_package_selected', {'package': context.user_data['topup_package']})
 
     keyboard = [

@@ -400,19 +400,42 @@ async def broadcast_w_prices_message(update: Update, context: ContextTypes.DEFAU
 
     # Create inline keyboard with pricing packages
     keyboard = []
-    packages = get_package_prices(discount_active=True) # Assuming discount is active for broadcast
-    for package in packages:
-        shorts = package['shorts']
-        rub = package['rub']
-        original_rub = package['original_rub']
-        stars = package['stars']
-        usdt = package['usdt']
-        if package['highlight']:
-            button_text = "🔥 " + get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub) + " 🔥"
-        else:
+    
+    discount_active = context.bot_data.get('discount_active', False)
+    discount_end_time = context.bot_data.get('discount_end_time')
+    is_discount_time = discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time
+
+    packages = get_package_prices(discount_active=is_discount_time)
+    
+    if is_discount_time:
+        for package in packages:
+            shorts = package['shorts']
+            rub = package['rub']
+            original_rub = package['original_rub']
+            
             button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
-        button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
-        keyboard.append([button])
+            if package.get('price_per_item'):
+                button_text += f" | {package['price_per_item']}₽/шт"
+            
+            if package['highlight']:
+                button_text = "🔥 " + button_text + " 🔥"
+            
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}')
+            keyboard.append([button])
+    else:
+        for package in packages:
+            shorts = package['shorts']
+            rub = package['rub']
+            
+            button_text = get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub)
+            if package.get('price_per_item'):
+                button_text += f" | {package['price_per_item']}₽/шт"
+
+            if package['highlight']:
+                button_text = "🔥 " + button_text + " 🔥"
+            
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}')
+            keyboard.append([button])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
 

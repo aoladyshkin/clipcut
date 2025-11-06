@@ -26,7 +26,8 @@ from handlers import (
     skip_feedback,
     handle_user_feedback,
     start_demo,
-    confirm_demo
+    confirm_demo,
+    get_brainrot
 ) 
 from states import (
     GET_URL,
@@ -51,7 +52,8 @@ from states import (
     GET_BANNER,
     GET_YOOKASSA_EMAIL, # Added
     YOOKASSA_PAYMENT,
-    GET_BROADCAST_W_PRICES_MESSAGE
+    GET_BROADCAST_W_PRICES_MESSAGE,
+    GET_BRAINROT
 )
 
 def get_conv_handler():
@@ -74,7 +76,10 @@ def get_conv_handler():
                 MessageHandler(filters.TEXT & ~filters.COMMAND, get_shorts_number_manual),
             ],
             GET_LAYOUT: [
-                CallbackQueryHandler(get_layout, pattern='^(square_center|square_top_brainrot_bottom|full_center|full_top_brainrot_bottom|face_track_9_16)$'),
+                CallbackQueryHandler(get_layout, pattern='^(9_16|16_9|1_1)$'),
+            ],
+            GET_BRAINROT: [
+                CallbackQueryHandler(get_brainrot, pattern='^(gta|minecraft|no_brainrot)$'),
             ],
             GET_FACE_TRACKING: [
                 CallbackQueryHandler(get_face_tracking, pattern='^(track_yes|track_no)$'),

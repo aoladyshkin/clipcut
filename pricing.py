@@ -5,11 +5,11 @@ RUB_TO_STARS_RATE = 100/180  # 100 Stars = 180 RUB
 
 
 PACKAGES = [
-    {"shorts": 5, "rub": 139, "discount_rub": 109, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 169
-    {"shorts": 10, "rub": 269, "discount_rub": 159, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 319
-    {"shorts": 25, "rub": 649, "discount_rub": 379, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": True}, # 739
-    {"shorts": 50, "rub": 1190, "discount_rub": 719, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 1390
-    {"shorts": 100, "rub": 1990, "discount_rub": 1199, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 1990
+    {"shorts": 5, "rub": 139, "discount_rub": 89, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 169
+    {"shorts": 10, "rub": 259, "discount_rub": 159, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 319
+    {"shorts": 25, "rub": 599, "discount_rub": 369, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": True}, # 739
+    {"shorts": 50, "rub": 999, "discount_rub": 649, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 1390
+    {"shorts": 100, "rub": 1790, "discount_rub": 1199, "rub_per_short": 0, "discount_rub_per_short": 0, "highlight": False}, # 1990
 ]
 
 def get_package_prices(discount_active: bool = False) -> list:

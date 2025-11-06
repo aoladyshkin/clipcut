@@ -48,6 +48,14 @@ def initialize_database():
             conn.commit()
             print("Database schema updated: added 'language' column to 'users' table.")
         
+        # Check if the first_payment_made column exists, and add it if it doesn't
+        try:
+            cursor.execute("SELECT has_referral_discount FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE users ADD COLUMN has_referral_discount BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
+            print("Database schema updated: added 'has_referral_discount' column to 'users' table.")
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS processing_queue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -198,6 +206,32 @@ def get_all_users_data():
         cursor = conn.cursor()
         cursor.execute("SELECT user_id, balance, generated_count, referred_by, source, language FROM users")
         return cursor.fetchall()
+
+def set_referral_discount(user_id: int, status: bool):
+    """Sets the referral discount status for a user."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET has_referral_discount = ? WHERE user_id = ?",
+            (status, user_id)
+        )
+        conn.commit()
+
+def has_referral_discount(user_id: int) -> bool:
+    """Checks if a user has a referral discount."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT has_referral_discount FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        return result[0] == 1 if result else False
+
+def get_user_referrer(user_id: int) -> Optional[int]:
+    """Gets the referrer of a user."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        return result[0] if result and result[0] else None
 
 def clear_database():
     """

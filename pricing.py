@@ -12,13 +12,14 @@ PACKAGES = [
     {"generations": 50, "rub": 2590, "discount_rub": 1999, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
 ]
 
-def get_package_prices(discount_active: bool = False) -> list:
+def get_package_prices(discount_active: bool = False, referral_discount_active: bool = False) -> list:
     
     """Returns a list of all packages with their calculated prices."""
     prices = []
     for pkg in PACKAGES:
-        rub_price = pkg["discount_rub"] if discount_active and "discount_rub" in pkg else pkg["rub"]
-        price_per_item = pkg.get("discount_rub_per_generation") if discount_active and "discount_rub_per_generation" in pkg else pkg.get("rub_per_generation")
+        rub_price = pkg["discount_rub"] if (discount_active or referral_discount_active) and "discount_rub" in pkg else pkg["rub"]
+
+        price_per_item = pkg.get("discount_rub_per_generation") if (discount_active or referral_discount_active) and "discount_rub_per_generation" in pkg else pkg.get("rub_per_generation")
         prices.append({
             "generations": pkg["generations"],
             "rub": rub_price,

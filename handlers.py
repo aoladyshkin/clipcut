@@ -1,51 +1,29 @@
 import logging
+import asyncio
+import yookassa
+from yookassa import Configuration
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice
 from telegram.ext import ContextTypes, ConversationHandler
 import uuid
 import json
 from telegram.error import TimedOut, BadRequest
-from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position
-import os
-import asyncio
-import yookassa
-from yookassa import Configuration
-from processing.bot_logic import main as process_video
+from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position, get_user_referrer, has_referral_discount, set_referral_discount
+from pricing import DEMO_CONFIG, get_package_prices
+from analytics import log_event
+from states import (
+    GET_URL, GET_SHORTS_NUMBER, GET_LAYOUT, GET_SUBTITLES_TYPE, GET_SUBTITLE_STYLE, 
+    GET_BANNER, CONFIRM_CONFIG, PROCESSING, GET_BRAINROT, GET_FACE_TRACKING, 
+    GET_YOOKASSA_EMAIL, YOOKASSA_PAYMENT, CRYPTO_PAYMENT, FEEDBACK, GET_TOPUP_METHOD
+)
+from localization import get_translation
+from datetime import datetime, timezone
 from processing.download import check_video_availability
 from utils import format_config
-from analytics import log_event
-from localization import get_translation
-from states import (
-    GET_URL,
-    GET_SUBTITLE_STYLE,
-    GET_BOTTOM_VIDEO,
-    GET_LAYOUT,
-    GET_FACE_TRACKING,
-    GET_SUBTITLES_TYPE,
-    CONFIRM_CONFIG,
-    GET_SHORTS_NUMBER,
-    GET_TOPUP_METHOD,
-    GET_TOPUP_PACKAGE,
-    GET_CRYPTO_AMOUNT,
-    CRYPTO_PAYMENT,
-    RATING,
-    FEEDBACK,
-    PROCESSING,
-    GET_FEEDBACK_TEXT,
-    GET_TARGETED_BROADCAST_MESSAGE,
-    GET_LANGUAGE,
-    GET_BANNER,
-    GET_YOOKASSA_EMAIL, # Added
-    YOOKASSA_PAYMENT,
-    GET_BRAINROT
-)
-from datetime import datetime, timezone
-from pricing import DEMO_CONFIG, get_package_prices
-from datetime import datetime, timezone
 from config import (
     FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, 
     ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK,
     YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, ADMIN_USER_TAG, MODERATORS_USER_TAGS,
-    MAX_SHORTS_PER_VIDEO
+    MAX_SHORTS_PER_VIDEO, REFERRER_REWARD
 )
 from processing.demo import simulate_demo_processing
 
@@ -139,10 +117,6 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user_id = query.from_user.id
     _, _, _, lang, _ = get_user(user_id)
     context.user_data['lang'] = lang
-
-    # Import utility function
-    from utils import format_config
-    import uuid
 
     # Clear any previous config and set up demo data
     context.user_data.clear()
@@ -795,6 +769,8 @@ async def broadcast_topup_package_selection(update: Update, context: ContextType
     return GET_TOPUP_METHOD
 
 
+
+
 async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Saves the selected package and prompts for the payment method."""
     query = update.callback_query
@@ -810,7 +786,12 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     discount_active = context.bot_data.get('discount_active', False)
     discount_end_time = context.bot_data.get('discount_end_time')
     is_discount_time = discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time
-    packages = get_package_prices(discount_active=is_discount_time)
+
+    is_referred = get_user_referrer(user_id) is not None
+    first_payment = not has_user_paid(user_id)
+    referral_discount_active = is_referred and first_payment
+
+    packages = get_package_prices(discount_active=is_discount_time, referral_discount_active=referral_discount_active)
 
     # Find the selected package
     selected_package = next((p for p in packages if p['generations'] == generations), None)
@@ -972,6 +953,8 @@ async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_T
                 del context.user_data['payment_not_found_messages']
 
             add_to_user_balance(user_id_from_payload, amount)
+            if has_referral_discount(user_id_from_payload):
+                set_referral_discount(user_id_from_payload, False)
             _, new_balance, _, _, _ = get_user(user_id_from_payload)
             log_event(user_id_from_payload, 'payment_success', {'provider': 'yookassa', 'generations_amount': amount, 'total_amount': float(payment.amount.value), 'currency': payment.amount.currency})
 
@@ -1097,6 +1080,8 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     generations_amount = int(payload_parts[2])
 
     add_to_user_balance(user_id, generations_amount)
+    if has_referral_discount(user_id):
+        set_referral_discount(user_id, False)
     _, new_balance, _, lang, _ = get_user(user_id)
 
     log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'generations_amount': generations_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
@@ -1136,6 +1121,8 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
                     del context.user_data['payment_not_found_messages']
 
                 add_to_user_balance(user_id_from_payload, amount)
+                if has_referral_discount(user_id_from_payload):
+                    set_referral_discount(user_id_from_payload, False)
                 _, new_balance, _, _, _ = get_user(user_id_from_payload)
                 log_event(user_id_from_payload, 'payment_success', {'provider': 'cryptobot', 'generations_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 

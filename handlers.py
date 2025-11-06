@@ -193,16 +193,6 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['balance'] = balance
     context.user_data['lang'] = lang
 
-    if balance <= 0:
-        topup_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
-        ])
-        await update.message.reply_text(
-            get_translation(lang, "out_of_shorts"),
-            reply_markup=topup_keyboard
-        )
-        return ConversationHandler.END
-
     url = update.message.text
     generation_id = str(uuid.uuid4())
     context.user_data['generation_id'] = generation_id
@@ -678,9 +668,18 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    lang = context.user_data.get('lang', 'en')
+    _, balance, _, lang, _ = get_user(user_id)
 
-    balance = context.user_data.get('balance', 0)
+    if balance <= 0:
+        topup_keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
+        ])
+        await query.edit_message_text(
+            get_translation(lang, "out_of_shorts"),
+            reply_markup=topup_keyboard
+        )
+        return ConversationHandler.END
+
     shorts_number = context.user_data.get('config', {}).get('shorts_number', 'auto')
 
     if isinstance(shorts_number, int):

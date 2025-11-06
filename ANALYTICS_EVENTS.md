@@ -143,13 +143,13 @@
     ```json
     {
       "provider": "telegram_stars", "cryptobot" или "yookassa",
-      "shorts_amount": 10,
+      "generations_amount": 10,
       "total_amount": 100,
       "currency": "XTR", "USDT" или "RUB"
     }
     ```
     *   `provider`: Способ оплаты (`telegram_stars`, `cryptobot` или `yookassa`).
-    *   `shorts_amount`: Количество купленных "шортсов".
+    *   `generations_amount`: Количество купленных "генераций".
     *   `total_amount`: Сумма платежа в указанной валюте.
     *   `currency`: Валюта платежа (`XTR` для Stars, `USDT` для CryptoBot, `RUB` для Yookassa).
 
@@ -370,7 +370,7 @@
     ```json
     {
       "package": {
-        "shorts": 10,
+        "generations": 10,
         "rub": 890,
         "stars": 890,
         "usdt": 8.9

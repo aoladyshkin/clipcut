@@ -1,6 +1,6 @@
 import sqlite3
 from typing import Optional, Tuple
-from config import FREE_SHORTS_ON_START
+from config import START_BALANCE
 
 DB_FILE = "data/clipcut.db"
 
@@ -11,13 +11,21 @@ def initialize_database():
         cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
-                balance INTEGER NOT NULL DEFAULT {FREE_SHORTS_ON_START},
-                generated_shorts_count INTEGER NOT NULL DEFAULT 0,
+                balance INTEGER NOT NULL DEFAULT {START_BALANCE},
+                generated_count INTEGER NOT NULL DEFAULT 0,
                 referred_by INTEGER,
                 source TEXT,
                 language TEXT DEFAULT 'ru'
             )
         """)
+        # Check if the generated_count column exists, and add it if it doesn't
+        try:
+            cursor.execute("SELECT generated_count FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE users ADD COLUMN generated_count INTEGER NOT NULL DEFAULT 0")
+            conn.commit()
+            print("Database schema updated: added 'generated_count' column to 'users' table.")
+
         # Check if the referred_by column exists, and add it if it doesn't
         try:
             cursor.execute("SELECT referred_by FROM users LIMIT 1")
@@ -107,18 +115,18 @@ def get_user(user_id: int, referrer_id: Optional[int] = None, source: Optional[s
     """
     Получает данные пользователя по user_id.
     Если пользователь не найден, создает его с балансом по умолчанию.
-    Возвращает кортеж (user_id, balance, generated_shorts_count, language, is_new).
+    Возвращает кортеж (user_id, balance, generated_count, language, is_new).
     """
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, balance, generated_shorts_count, language FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT user_id, balance, generated_count, language FROM users WHERE user_id = ?", (user_id,))
         user = cursor.fetchone()
         if user is None:
             # Пользователь не найден, создаем нового
-            cursor.execute("INSERT INTO users (user_id, balance, referred_by, source, language) VALUES (?, ?, ?, ?, ?)", (user_id, FREE_SHORTS_ON_START, referrer_id, source, 'ru'))
+            cursor.execute("INSERT INTO users (user_id, balance, referred_by, source, language) VALUES (?, ?, ?, ?, ?)", (user_id, START_BALANCE, referrer_id, source, 'ru'))
             conn.commit()
             # Возвращаем данные нового пользователя
-            return user_id, FREE_SHORTS_ON_START, 0, 'ru', True
+            return user_id, START_BALANCE, 0, 'ru', True
         return user + (False,)
 
 def set_user_language(user_id: int, language_code: str):
@@ -133,16 +141,16 @@ def set_user_language(user_id: int, language_code: str):
         )
         conn.commit()
 
-def update_user_balance(user_id: int, shorts_generated: int):
+def deduct_generation_from_balance(user_id: int):
     """
-    Обновляет баланс пользователя и количество сгенерированных шортсов.
+    Обновляет баланс пользователя и количество сгенерированных видео.
     """
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
         # Уменьшаем баланс и увеличиваем счетчик
         cursor.execute(
-            "UPDATE users SET balance = balance - ?, generated_shorts_count = generated_shorts_count + ? WHERE user_id = ?",
-            (shorts_generated, shorts_generated, user_id)
+            "UPDATE users SET balance = balance - 1, generated_count = generated_count + 1 WHERE user_id = ?",
+            (user_id,)
         )
         conn.commit()
 
@@ -188,7 +196,7 @@ def get_all_users_data():
     """Возвращает все данные из таблицы users."""
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT user_id, balance, generated_shorts_count, referred_by, source, language FROM users")
+        cursor.execute("SELECT user_id, balance, generated_count, referred_by, source, language FROM users")
         return cursor.fetchall()
 
 def clear_database():

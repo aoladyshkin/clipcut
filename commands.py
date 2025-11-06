@@ -85,7 +85,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     ]
     if is_admin(user_id):
         logger.info("User is an admin, adding admin commands.")
-        base_commands.append(BotCommand(command="addshorts", description="Добавить шортсы пользователю"))
+        base_commands.append(BotCommand(command="addgenerations", description="Добавить генерации пользователю"))
         base_commands.append(BotCommand(command="setbalance", description="Установить баланс пользователю"))
         base_commands.append(BotCommand(command="broadcast", description="Сделать рассылку"))
         base_commands.append(BotCommand(command="broadcast_to", description="Сделать рассылку определенным юзерам"))
@@ -100,7 +100,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     context.user_data.clear()
     context.user_data['config'] = {}
-    context.user_data['balance'] = balance
     
     if is_new:
         keyboard = [
@@ -193,33 +192,33 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     if is_discount_time:
         message_text = get_translation(lang, "topup_package_prompt_discount").format(balance=balance)
         for package in packages:
-            shorts = package['shorts']
+            generations = package['generations']
             rub = package['rub']
             original_rub = package['original_rub']
             stars = package['stars']
             usdt = package['usdt']
-            button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
-            if package.get('price_per_item'):
-                button_text += f" | {package['price_per_item']}₽/шт"
+            button_text = get_translation(lang, "n_generations_rub_discount_button").format(generations=generations, old_rub=original_rub, new_rub=rub)
+            if package.get('price_per_generation'):
+                button_text += f" | {package['price_per_generation']}₽/шт"
             
             if package['highlight']:
                 button_text = "🔥 " + button_text + " 🔥"
-            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{generations}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     else:
         message_text = get_translation(lang, "topup_package_prompt").format(balance=balance)
         for package in packages:
-            shorts = package['shorts']
+            generations = package['generations']
             rub = package['rub']
             stars = package['stars']
             usdt = package['usdt']
-            button_text = get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub)
-            if package.get('price_per_item'):
-                button_text += f" | {package['price_per_item']}₽/шт"
+            button_text = get_translation(lang, "n_generations_rub_button").format(generations=generations, rub=rub)
+            if package.get('price_per_generation'):
+                button_text += f" | {package['price_per_generation']}₽/шт"
 
             if package['highlight']:
                 button_text = "🔥 " + button_text + " 🔥"
-            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}_{rub}_{stars}_{usdt}')
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{generations}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     
     message_text += "\n\n" + get_translation(lang, "referral_message").format(bonus_amount=REFERRAL_BONUS, referral_link=referral_link)
@@ -233,8 +232,8 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         
     return GET_TOPUP_PACKAGE
 
-async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Adds a specified amount of shorts to a user's balance."""
+async def add_generations_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Adds a specified amount of generations to a user's balance."""
     if not is_admin(update.effective_user.id):
         return
 
@@ -244,16 +243,16 @@ async def add_shorts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         amount = int(amount_str)
 
         if amount <= 0:
-            await update.message.reply_text("Количество шортсов должно быть положительным числом.")
+            await update.message.reply_text("Количество генераций должно быть положительным числом.")
             return
 
         add_to_user_balance(user_id, amount)
         _, new_balance, _, _, _ = get_user(user_id)
 
-        await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} шортсов. Новый баланс: {new_balance}.")
+        await update.message.reply_text(f"Баланс пользователя {user_id} успешно пополнен на {amount} генераций. Новый баланс: {new_balance}.")
 
     except (ValueError, IndexError):
-        await update.message.reply_text("Неверный формат команды. Используйте: /addshorts <user_id> <amount>")
+        await update.message.reply_text("Неверный формат команды. Используйте: /addgenerations <user_id> <amount>")
 
 async def set_user_balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sets a user's balance to a specified amount."""
@@ -409,32 +408,32 @@ async def broadcast_w_prices_message(update: Update, context: ContextTypes.DEFAU
     
     if is_discount_time:
         for package in packages:
-            shorts = package['shorts']
+            generations = package['generations']
             rub = package['rub']
             original_rub = package['original_rub']
             
-            button_text = get_translation(lang, "n_shorts_rub_discount_button").format(shorts=shorts, old_rub=original_rub, new_rub=rub)
-            if package.get('price_per_item'):
-                button_text += f" | {package['price_per_item']}₽/шт"
+            button_text = get_translation(lang, "n_generations_rub_discount_button").format(generations=generations, old_rub=original_rub, new_rub=rub)
+            if package.get('price_per_generation'):
+                button_text += f" | {package['price_per_generation']}₽/шт"
             
             if package['highlight']:
                 button_text = "🔥 " + button_text + " 🔥"
             
-            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}')
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{generations}')
             keyboard.append([button])
     else:
         for package in packages:
-            shorts = package['shorts']
+            generations = package['generations']
             rub = package['rub']
             
-            button_text = get_translation(lang, "n_shorts_rub_button").format(shorts=shorts, rub=rub)
-            if package.get('price_per_item'):
-                button_text += f" | {package['price_per_item']}₽/шт"
+            button_text = get_translation(lang, "n_generations_rub_button").format(generations=generations, rub=rub)
+            if package.get('price_per_generation'):
+                button_text += f" | {package['price_per_generation']}₽/шт"
 
             if package['highlight']:
                 button_text = "🔥 " + button_text + " 🔥"
             
-            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{shorts}')
+            button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{generations}')
             keyboard.append([button])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -599,7 +598,7 @@ async def export_users_command(update: Update, context: ContextTypes.DEFAULT_TYP
         writer = csv.writer(output)
         
         # Write header
-        writer.writerow(['user_id', 'balance', 'generated_shorts_count', 'referred_by', 'source', 'language'])
+        writer.writerow(['user_id', 'balance', 'generated_count', 'referred_by', 'source', 'language'])
         
         # Write data
         writer.writerows(users_data)

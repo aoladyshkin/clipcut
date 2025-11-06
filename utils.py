@@ -11,22 +11,15 @@ def format_config(config, balance=None, is_demo=False, lang='ru'):
     video_map = {'gta': 'GTA', 'minecraft': 'Minecraft', None: get_translation(lang, 'none')}
     sub_type_map = {'word-by-word': get_translation(lang, 'word_by_word'), 'phrases': get_translation(lang, 'by_phrase'), 'no_subtitles': get_translation(lang, 'no_subtitles')}
     sub_style_map = {'white': get_translation(lang, 'white'), 'yellow': get_translation(lang, 'yellow'), 'purple': get_translation(lang, 'purple'), 'green': get_translation(lang, 'green'), None: get_translation(lang, 'none')}
-    shorts_number = config.get('shorts_number', get_translation(lang, 'auto'))
-
-    if shorts_number != 'auto':
-        shorts_number_text = str(shorts_number)
-    else:
-        shorts_number_text = get_translation(lang, 'auto_select_best_fragments')
 
     if is_demo:
         balance_text = ""
     elif balance is not None:
-        balance_text = get_translation(lang, 'your_balance_shorts').format(balance=balance)
+        balance_text = get_translation(lang, 'your_balance_generations').format(balance=balance)
     else:
         balance_text = ""
 
     settings_text = (
-        get_translation(lang, 'shorts_quantity').format(shorts_number_text=shorts_number_text) +
         get_translation(lang, 'format_layout').format(layout=layout_map.get(config.get('layout'), get_translation(lang, 'not_selected')))
     )
 

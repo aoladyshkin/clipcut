@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 import uuid
 import json
 from telegram.error import TimedOut, BadRequest
-from database import get_user, update_user_balance, add_to_user_balance, add_task_to_queue, get_queue_position
+from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position
 import os
 import asyncio
 import yookassa
@@ -189,8 +189,7 @@ async def start_demo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Saves the URL and prompts for the number of shorts."""
     user_id = update.effective_user.id
-    _, balance, _, lang, _ = get_user(user_id)
-    context.user_data['balance'] = balance
+    _, _, _, lang, _ = get_user(user_id)
     context.user_data['lang'] = lang
 
     url = update.message.text
@@ -322,19 +321,6 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
 
         if number > MAX_SHORTS_PER_VIDEO:
             msg = await context.bot.send_message(chat_id=update.effective_chat.id, text=get_translation(lang, "max_shorts_exceeded").format(max_shorts=MAX_SHORTS_PER_VIDEO))
-            context.user_data['error_message_id'] = msg.message_id
-            await resend_prompt(context)
-            return GET_SHORTS_NUMBER
-
-        if number > balance:
-            topup_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
-            ])
-            msg = await context.bot.send_message(
-                chat_id=update.effective_chat.id, 
-                text=get_translation(lang, "balance_is_not_enough_for_n").format(balance=balance),
-                reply_markup=topup_keyboard
-            )
             context.user_data['error_message_id'] = msg.message_id
             await resend_prompt(context)
             return GET_SHORTS_NUMBER
@@ -593,7 +579,8 @@ async def ask_for_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     """Asks admin users if they want to add a banner."""
     query = update.callback_query
     user_id = query.from_user.id
-    lang = context.user_data.get('lang', 'en')
+    _, balance, _, lang, _ = get_user(user_id)
+    context.user_data['lang'] = lang
 
     if str(user_id) in ADMIN_USER_IDS:
         keyboard = [
@@ -612,7 +599,6 @@ async def ask_for_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return GET_BANNER
     else:
         context.user_data['config']['add_banner'] = False
-        balance = context.user_data.get('balance')
         settings_text = format_config(context.user_data['config'], balance, lang=lang)
         keyboard = [
             [
@@ -635,14 +621,15 @@ async def get_banner_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     """Saves the user's choice about the banner and shows the confirmation screen."""
     query = update.callback_query
     await query.answer()
-    lang = context.user_data.get('lang', 'en')
+    user_id = query.from_user.id
+    _, balance, _, lang, _ = get_user(user_id)
+    context.user_data['lang'] = lang
     choice = query.data == 'banner_yes'
     context.user_data['config']['add_banner'] = choice
     generation_id = context.user_data.get('generation_id')
     log_event(query.from_user.id, 'config_step_banner_selected', {'choice': choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: add_banner = {choice}")
 
-    balance = context.user_data.get('balance')
     settings_text = format_config(context.user_data['config'], balance, lang=lang)
 
     keyboard = [
@@ -675,25 +662,12 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
         ])
         await query.edit_message_text(
-            get_translation(lang, "out_of_shorts"),
+            get_translation(lang, "out_of_generations"),
             reply_markup=topup_keyboard
         )
         return ConversationHandler.END
 
-    shorts_number = context.user_data.get('config', {}).get('shorts_number', 'auto')
-
-    if isinstance(shorts_number, int):
-        if balance < shorts_number:
-            topup_keyboard = InlineKeyboardMarkup([
-                [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
-            ])
-            await query.edit_message_text(
-                get_translation(lang, "insufficient_balance_for_generation").format(balance=balance, shorts_number=shorts_number),
-                reply_markup=topup_keyboard
-            )
-            return ConversationHandler.END
-    elif shorts_number == 'auto':
-        pass
+    deduct_generation_from_balance(user_id)
 
     generation_id = context.user_data.get('generation_id')
     
@@ -768,10 +742,6 @@ async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.user_data.clear()
     context.user_data['config'] = {}
 
-    # Re-fetch balance
-    _, balance, _, _, _ = get_user(user_id)
-    context.user_data['balance'] = balance
-    
     await query.edit_message_text(
         get_translation(lang, "settings_cancelled_prompt")
     )
@@ -789,7 +759,7 @@ async def broadcast_topup_package_selection(update: Update, context: ContextType
     context.user_data['lang'] = lang
 
     package_data = query.data.split('_')
-    shorts = int(float(package_data[-1]))
+    generations = int(float(package_data[-1]))
 
     # Get the current prices
     discount_active = context.bot_data.get('discount_active', False)
@@ -798,7 +768,7 @@ async def broadcast_topup_package_selection(update: Update, context: ContextType
     packages = get_package_prices(discount_active=is_discount_time)
 
     # Find the selected package
-    selected_package = next((p for p in packages if p['shorts'] == shorts), None)
+    selected_package = next((p for p in packages if p['generations'] == generations), None)
 
     if not selected_package:
         await query.message.reply_text(get_translation(lang, "something_went_wrong"))
@@ -834,7 +804,7 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     _, _, _, lang, _ = get_user(user_id)
 
     package_data = query.data.split('_')
-    shorts = int(package_data[2])
+    generations = int(package_data[2])
 
     # Get the current prices
     discount_active = context.bot_data.get('discount_active', False)
@@ -843,7 +813,7 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     packages = get_package_prices(discount_active=is_discount_time)
 
     # Find the selected package
-    selected_package = next((p for p in packages if p['shorts'] == shorts), None)
+    selected_package = next((p for p in packages if p['generations'] == generations), None)
 
     if not selected_package:
         await query.edit_message_text(get_translation(lang, "something_went_wrong"))
@@ -901,7 +871,7 @@ async def get_yookassa_email(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text(get_translation(lang, "something_went_wrong"))
         return ConversationHandler.END
 
-    amount = package['shorts']
+    amount = package['generations']
     total_price = package['rub']
 
     Configuration.configure(YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY)
@@ -919,10 +889,10 @@ async def get_yookassa_email(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "return_url": f"https://t.me/{context.bot.username}"
             },
             "capture": True,
-            "description": f"Top-up for {amount} shorts",
+            "description": f"Top-up for {amount} generations",
             "metadata": {
                 "user_id": user_id,
-                "shorts_amount": amount
+                "generations_amount": amount
             },
             "receipt": {
                 "customer": {
@@ -930,7 +900,7 @@ async def get_yookassa_email(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 },
                 "items": [
                     {
-                        "description": f"Top-up for {amount} shorts",
+                        "description": f"Top-up for {amount} generations",
                         "quantity": "1.00",
                         "amount": {
                             "value": str(total_price),
@@ -1003,7 +973,7 @@ async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_T
 
             add_to_user_balance(user_id_from_payload, amount)
             _, new_balance, _, _, _ = get_user(user_id_from_payload)
-            log_event(user_id_from_payload, 'payment_success', {'provider': 'yookassa', 'shorts_amount': amount, 'total_amount': float(payment.amount.value), 'currency': payment.amount.currency})
+            log_event(user_id_from_payload, 'payment_success', {'provider': 'yookassa', 'generations_amount': amount, 'total_amount': float(payment.amount.value), 'currency': payment.amount.currency})
 
             await query.edit_message_text(
                 get_translation(lang, "payment_successful").format(amount=amount, new_balance=new_balance),
@@ -1047,15 +1017,15 @@ async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
         return ConversationHandler.END
 
-    shorts_amount = package['shorts']
+    generations_amount = package['generations']
     stars_amount = package['stars']
     
     chat_id = update.effective_chat.id
-    title = get_translation(lang, "topup_invoice_title").format(shorts_amount=shorts_amount)
-    description = get_translation(lang, "topup_invoice_description").format(shorts_amount=shorts_amount)
-    payload = f"topup-{chat_id}-{shorts_amount}-{stars_amount}"
+    title = get_translation(lang, "topup_invoice_title").format(generations_amount=generations_amount)
+    description = get_translation(lang, "topup_invoice_description").format(generations_amount=generations_amount)
+    payload = f"topup-{chat_id}-{generations_amount}-{stars_amount}"
     currency = "XTR"
-    prices = [LabeledPrice(get_translation(lang, "n_shorts").format(shorts_amount=shorts_amount), stars_amount)]
+    prices = [LabeledPrice(get_translation(lang, "n_generations").format(generations_amount=generations_amount), stars_amount)]
 
     await context.bot.send_invoice(
         chat_id=chat_id,
@@ -1081,7 +1051,7 @@ async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
         return ConversationHandler.END
 
-    amount = package['shorts']
+    amount = package['generations']
     total_price = package['usdt']
 
     crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
@@ -1101,7 +1071,7 @@ async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        get_translation(lang, "you_are_buying_n_shorts_for_m_usdt").format(amount=amount, total_price=total_price),
+        get_translation(lang, "you_are_buying_n_generations_for_m_usdt").format(amount=amount, total_price=total_price),
         reply_markup=reply_markup,
         parse_mode="HTML",
         disable_web_page_preview=True
@@ -1124,16 +1094,16 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     payment_info = update.message.successful_payment
     payload_parts = payment_info.invoice_payload.split('-')
     user_id = int(payload_parts[1])
-    shorts_amount = int(payload_parts[2])
+    generations_amount = int(payload_parts[2])
 
-    add_to_user_balance(user_id, shorts_amount)
+    add_to_user_balance(user_id, generations_amount)
     _, new_balance, _, lang, _ = get_user(user_id)
 
-    log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'shorts_amount': shorts_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
+    log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'generations_amount': generations_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
 
     await context.bot.send_message(
         chat_id=user_id,
-        text=get_translation(lang, "payment_successful").format(amount=shorts_amount, new_balance=new_balance),
+        text=get_translation(lang, "payment_successful").format(amount=generations_amount, new_balance=new_balance),
         parse_mode="HTML"
     )
 
@@ -1167,7 +1137,7 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 
                 add_to_user_balance(user_id_from_payload, amount)
                 _, new_balance, _, _, _ = get_user(user_id_from_payload)
-                log_event(user_id_from_payload, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
+                log_event(user_id_from_payload, 'payment_success', {'provider': 'cryptobot', 'generations_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 
                 await query.edit_message_text(
                     get_translation(lang, "payment_successful").format(amount=amount, new_balance=new_balance),
@@ -1273,34 +1243,6 @@ async def handle_user_feedback(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(get_translation(lang, "thank_you_for_feedback"))
     return ConversationHandler.END
 
-async def handle_feedback_approval(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles the approval or decline of feedback."""
-    query = update.callback_query
-    await query.answer()
-
-    admin_user = query.from_user
-    data = query.data.split(':')
-    action = data[0]
-    user_id = int(data[1])
-
-    original_message = query.message.text
-    
-    _, _, _, lang, _ = get_user(user_id)
-
-    if action == 'approve_feedback':
-        add_to_user_balance(user_id, REWARD_FOR_FEEDBACK)
-        await query.edit_message_text(
-            f"{original_message}\n\n---\nApproved by {admin_user.full_name} (@{admin_user.username})\n+ {REWARD_FOR_FEEDBACK} shorts for user {user_id}"
-        )
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=get_translation(lang, "feedback_approved").format(reward=REWARD_FOR_FEEDBACK)
-        )
-    elif action == 'decline_feedback':
-        await query.edit_message_text(
-            f"{original_message}\n\n---\nDeclined by {admin_user.full_name} (@{admin_user.username})"
-        )
-
 async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Skips the text feedback step."""
     query = update.callback_query
@@ -1309,171 +1251,6 @@ async def skip_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     await query.edit_message_text(get_translation(lang, "thank_you_for_rating"))
     context.user_data.clear()
     return ConversationHandler.END
-
-async def back_to_package_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Goes back to the package selection screen."""
-    from commands import topup_start
-    return await topup_start(update, context)
-
-async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Sends an invoice for the selected package using Telegram Stars."""
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = query.from_user.id
-    _, _, _, lang, _ = get_user(user_id)
-    log_event(user_id, 'topup_method_selected', {'method': 'telegram_stars'})
-
-    await query.delete_message()
-    
-    package = context.user_data.get('topup_package')
-    if not package:
-        await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
-        return ConversationHandler.END
-
-    shorts_amount = package['shorts']
-    stars_amount = package['stars']
-    
-    chat_id = update.effective_chat.id
-    title = get_translation(lang, "topup_invoice_title").format(shorts_amount=shorts_amount)
-    description = get_translation(lang, "topup_invoice_description").format(shorts_amount=shorts_amount)
-    payload = f"topup-{chat_id}-{shorts_amount}-{stars_amount}"
-    currency = "XTR"
-    prices = [LabeledPrice(get_translation(lang, "n_shorts").format(shorts_amount=shorts_amount), stars_amount)]
-
-    await context.bot.send_invoice(
-        chat_id=chat_id,
-        title=title,
-        description=description,
-        payload=payload,
-        provider_token=None,
-        currency=currency,
-        prices=prices
-    )
-    return ConversationHandler.END
-
-async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handles the crypto payment for the selected package."""
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    _, _, _, lang, _ = get_user(user_id)
-    log_event(user_id, 'topup_method_selected', {'method': 'cryptobot'})
-
-    package = context.user_data.get('topup_package')
-    if not package:
-        await context.bot.send_message(chat_id=user_id, text=get_translation(lang, "something_went_wrong"))
-        return ConversationHandler.END
-
-    amount = package['shorts']
-    total_price = package['usdt']
-
-    crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
-    invoice = await crypto.create_invoice(asset='USDT', amount=total_price)
-    await crypto.close()
-
-    payment_url = invoice.bot_invoice_url
-    invoice_id = invoice.invoice_id
-
-    payload = f"check_crypto:{user_id}:{amount}:{invoice_id}"
-
-    keyboard = [
-        [InlineKeyboardButton(get_translation(lang, "pay_button"), url=payment_url)],
-        [InlineKeyboardButton(get_translation(lang, "check_payment_button"), callback_data=payload)],
-        [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_package_selection')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.edit_message_text(
-        get_translation(lang, "you_are_buying_n_shorts_for_m_usdt").format(amount=amount, total_price=total_price),
-        reply_markup=reply_markup,
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
-    
-    return CRYPTO_PAYMENT
-
-async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
-    """Answers the PreCheckoutQuery."""
-    query = update.pre_checkout_query
-    user_id = query.from_user.id
-    _, _, _, lang, _ = get_user(user_id)
-    if query.invoice_payload.startswith('topup-'):
-        await query.answer(ok=True)
-    else:
-        await query.answer(ok=False, error_message=get_translation(lang, "something_went_wrong"))
-
-async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None: 
-    """Confirms the successful payment."""
-    payment_info = update.message.successful_payment
-    payload_parts = payment_info.invoice_payload.split('-')
-    user_id = int(payload_parts[1])
-    shorts_amount = int(payload_parts[2])
-
-    add_to_user_balance(user_id, shorts_amount)
-    _, new_balance, _, lang, _ = get_user(user_id)
-
-    log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'shorts_amount': shorts_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
-
-    await context.bot.send_message(
-        chat_id=user_id,
-        text=get_translation(lang, "payment_successful").format(amount=shorts_amount, new_balance=new_balance),
-        parse_mode="HTML"
-    )
-
-from aiocryptopay import AioCryptoPay, Networks
-
-async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Checks the crypto payment and updates the balance."""
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    _, _, _, lang, _ = get_user(user_id)
-
-    try:
-        identifier, user_id_str, amount_str, invoice_id = query.data.split(':')
-        user_id_from_payload = int(user_id_str)
-        amount = int(amount_str)
-
-        try:
-            crypto = AioCryptoPay(token=CRYPTO_BOT_TOKEN, network=Networks.MAIN_NET)
-            invoices = await crypto.get_invoices(invoice_ids=invoice_id)
-            await crypto.close()
-
-            if invoices and invoices[0].status == 'paid':
-                if 'payment_not_found_messages' in context.user_data:
-                    for message_id in context.user_data['payment_not_found_messages']:
-                        try:
-                            await context.bot.delete_message(chat_id=user_id_from_payload, message_id=message_id)
-                        except Exception as e:
-                            logger.warning(f"Could not delete message {message_id}: {e}")
-                    del context.user_data['payment_not_found_messages']
-
-                add_to_user_balance(user_id_from_payload, amount)
-                _, new_balance, _, _, _ = get_user(user_id_from_payload)
-                log_event(user_id_from_payload, 'payment_success', {'provider': 'cryptobot', 'shorts_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
-
-                await query.edit_message_text(
-                    get_translation(lang, "payment_successful").format(amount=amount, new_balance=new_balance),
-                    parse_mode="HTML"
-                )
-                return ConversationHandler.END
-            else:
-                msg = await context.bot.send_message(chat_id=user_id_from_payload, text=get_translation(lang, "payment_not_found_try_again"))
-                if 'payment_not_found_messages' not in context.user_data:
-                    context.user_data['payment_not_found_messages'] = []
-                context.user_data['payment_not_found_messages'].append(msg.message_id)
-                return CRYPTO_PAYMENT
-
-        except Exception as e:
-            logger.error(f"Error checking crypto payment with aiocryptopay: {e}", exc_info=True)
-            await query.edit_message_text(get_translation(lang, "payment_system_error"))
-            return CRYPTO_PAYMENT
-
-    except (ValueError, IndexError) as e:
-        logger.error(f"Error checking crypto payment: {e}", exc_info=True)
-        await query.edit_message_text(get_translation(lang, "payment_check_error"))
-        return CRYPTO_PAYMENT
 
 
 
@@ -1569,7 +1346,7 @@ async def handle_feedback_approval(update: Update, context: ContextTypes.DEFAULT
     if action == 'approve_feedback':
         add_to_user_balance(user_id, REWARD_FOR_FEEDBACK)
         await query.edit_message_text(
-            f"{original_message}\n\n---\nApproved by {admin_user.full_name} (@{admin_user.username})\n+ {REWARD_FOR_FEEDBACK} shorts for user {user_id}"
+            f"{original_message}\n\n---\nApproved by {admin_user.full_name} (@{admin_user.username})\n+ {REWARD_FOR_FEEDBACK} generations for user {user_id}"
         )
         await context.bot.send_message(
             chat_id=user_id,

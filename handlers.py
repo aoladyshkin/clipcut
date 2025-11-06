@@ -437,6 +437,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     elif layout_choice == '9_16':
         context.user_data['config']['layout'] = 'face_track_9_16'
+        context.user_data['config']['bottom_video'] = None
         keyboard = [
             [
                 InlineKeyboardButton(get_translation(lang, "yes_track_face"), callback_data='track_yes'),

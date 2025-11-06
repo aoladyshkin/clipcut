@@ -244,6 +244,9 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
         'external_downloader': 'ffmpeg',
         'external_downloader_args': {
             'ffmpeg_i': [
+                '-reconnect', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '5',
                 '-ss', str(start_time)
             ],
             'default': [

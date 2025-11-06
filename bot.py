@@ -11,7 +11,7 @@ import telegram.error
 
 from conversation import get_conv_handler
 from commands import (
-    menu_command, add_shorts_command, set_user_balance_command, 
+    menu_command, add_generations_command, set_user_balance_command, 
     start_discount, end_discount, referral_command, remove_user_command, 
     export_users_command, lang_command, set_language, cancel, start, status_command
 )
@@ -170,29 +170,7 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
     generation_id = user_data.get('generation_id')
     log_event(chat_id, 'generation_start', {'generation_id': generation_id})
 
-    # --- Проверка баланса перед началом обработки ---
     _, current_balance, _, lang, _ = get_user(chat_id)
-    shorts_to_generate = user_data.get('config', {}).get('shorts_number')
-
-    error_message = None
-    if current_balance <= 0:
-        error_message = get_translation(lang, "zero_balance")
-    elif isinstance(shorts_to_generate, int) and current_balance < shorts_to_generate:
-        error_message = get_translation(lang, "insufficient_balance").format(current_balance=current_balance, shorts_to_generate=shorts_to_generate)
-
-    if error_message:
-        logger.warning(f"Отмена задачи для чата {chat_id}: {error_message}.")
-        topup_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
-        ])
-        await send_message_safely(
-            bot,
-            chat_id,
-            get_translation(lang, "processing_start_error").format(error_message=error_message),
-            reply_to_message_id=status_message_id,
-            reply_markup=topup_keyboard
-        )
-        return
 
     processing_message = await send_message_safely(
         bot,
@@ -231,14 +209,11 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
             user_data['config'],
             status_callback,
             send_video_callback,
-            delete_output,
-            user_balance=current_balance
+            delete_output
         )
 
         if shorts_generated_count > 0:
-            from database import update_user_balance, get_user
-            update_user_balance(chat_id, shorts_generated_count)
-            logger.info(f"Баланс пользователя {chat_id} обновлен. Списано {shorts_generated_count} шортсов.")
+            from database import get_user
             _, new_balance, _, lang, _ = get_user(chat_id)
             log_event(chat_id, 'generation_success', {
                 'url': user_data['url'],
@@ -367,7 +342,7 @@ def main():
     application.add_handler(CommandHandler("lang", lang_command))
     application.add_handler(conv_handler)
     application.add_handler(broadcast_topup_handler)
-    application.add_handler(CommandHandler("addshorts", add_shorts_command))
+    application.add_handler(CommandHandler("addgenerations", add_generations_command))
     application.add_handler(CommandHandler("setbalance", set_user_balance_command))
     application.add_handler(CommandHandler("rm_user", remove_user_command))
     application.add_handler(CommandHandler("start_discount", start_discount))

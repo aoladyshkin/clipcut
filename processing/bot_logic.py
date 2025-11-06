@@ -166,7 +166,7 @@ def create_clips(config, url, audio_only, shorts_to_process, transcript_segments
                 print(f"A future failed when sending video: {e}")
     return successful_sends
 
-def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False, user_balance: int = None):
+def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False):
 
     config['bottom_video_path'] = VIDEO_MAP.get(config['bottom_video'])
     lang = config.get('lang', 'ru')
@@ -198,12 +198,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
                 status_callback(get_translation(lang, "gpt_highlights_error"))
             return 0, 0
 
-        if user_balance is None:
-            user_balance = len(shorts_timecodes)
-
-        num_to_process = min(len(shorts_timecodes), user_balance)
+        num_to_process = len(shorts_timecodes)
         shorts_to_process = shorts_timecodes[:num_to_process]
-        extra_found = len(shorts_timecodes) - num_to_process
+        extra_found = 0
 
         if status_callback:
             status_callback(get_translation(lang, "clips_found").format(shorts_timecodes_len=len(shorts_timecodes), num_to_process=num_to_process))

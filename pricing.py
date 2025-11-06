@@ -5,20 +5,21 @@ RUB_TO_STARS_RATE = 100/180  # 100 Stars = 180 RUB
 
 
 PACKAGES = [
-    {"generations": 5, "rub": 139, "discount_rub": 89, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False}, # 169
-    {"generations": 10, "rub": 259, "discount_rub": 159, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False}, # 319
-    {"generations": 25, "rub": 599, "discount_rub": 369, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": True}, # 739
-    {"generations": 50, "rub": 999, "discount_rub": 649, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False}, # 1390
-    {"generations": 100, "rub": 1790, "discount_rub": 1199, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False}, # 1990
+    {"generations": 1, "rub": 149, "discount_rub": 99, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
+    {"generations": 5, "rub": 649, "discount_rub": 449, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
+    {"generations": 10, "rub": 999, "discount_rub": 749, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": True},
+    {"generations": 25, "rub": 1990, "discount_rub": 1449, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
+    {"generations": 50, "rub": 2590, "discount_rub": 1999, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
 ]
 
-def get_package_prices(discount_active: bool = False) -> list:
+def get_package_prices(discount_active: bool = False, referral_discount_active: bool = False) -> list:
     
     """Returns a list of all packages with their calculated prices."""
     prices = []
     for pkg in PACKAGES:
-        rub_price = pkg["discount_rub"] if discount_active and "discount_rub" in pkg else pkg["rub"]
-        price_per_item = pkg.get("discount_rub_per_generation") if discount_active and "discount_rub_per_generation" in pkg else pkg.get("rub_per_generation")
+        rub_price = pkg["discount_rub"] if (discount_active or referral_discount_active) and "discount_rub" in pkg else pkg["rub"]
+
+        price_per_item = pkg.get("discount_rub_per_generation") if (discount_active or referral_discount_active) and "discount_rub_per_generation" in pkg else pkg.get("rub_per_generation")
         prices.append({
             "generations": pkg["generations"],
             "rub": rub_price,

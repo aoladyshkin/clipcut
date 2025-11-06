@@ -4,10 +4,10 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
-from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language, get_user_tasks_from_queue, get_queue_position
+from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language, get_user_tasks_from_queue, get_queue_position, get_user_referrer, set_referral_discount, has_referral_discount
 from analytics import log_event
-from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE, GET_BROADCAST_W_PRICES_MESSAGE, GET_BROADCAST_W_PRICES_MESSAGE
-from config import TUTORIAL_LINK, ADMIN_USER_IDS, REFERRAL_BONUS
+from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE, GET_BROADCAST_W_PRICES_MESSAGE
+from config import TUTORIAL_LINK, ADMIN_USER_IDS, REFERRER_REWARD
 from datetime import datetime, timezone
 from localization import get_translation
 from pricing import get_package_prices
@@ -53,26 +53,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _, balance, _, lang, is_new = get_user(user_id, referrer_id=referrer_id, source=source)
 
     if is_new:
+        if referrer_id:
+            set_referral_discount(referrer_id, True)
         lang = 'ru'
         set_user_language(user_id, lang)
         log_event(user_id, 'new_user', {'username': update.effective_user.username, 'referrer_id': referrer_id, 'source': source})
-        if referrer_id and referrer_id != user_id:
-            # Award bonuses
-            add_to_user_balance(user_id, REFERRAL_BONUS)
-            add_to_user_balance(referrer_id, REFERRAL_BONUS)
-            
-            await message.reply_text(get_translation(lang, "welcome_referral_bonus").format(bonus_amount=REFERRAL_BONUS))
-            
-            try:
-                # Try to get the new user's username to mention them
-                new_user_mention = f"@{update.effective_user.username}" if update.effective_user.username else f"user {user_id}"
-                _, _, _, referrer_lang, _ = get_user(referrer_id)
-                await context.bot.send_message(
-                    chat_id=referrer_id,
-                    text=get_translation(referrer_lang, "friend_joined_referral_bonus").format(new_user_mention=new_user_mention, bonus_amount=REFERRAL_BONUS)
-                )
-            except Exception as e:
-                logger.error(f"Failed to send referral notification to {referrer_id}: {e}")
 
     # Set commands for the user
     base_commands = [
@@ -152,7 +137,7 @@ async def referral_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     referral_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     
     await update.message.reply_text(
-        get_translation(lang, "referral_message").format(bonus_amount=REFERRAL_BONUS, referral_link=referral_link),
+        get_translation(lang, "referral_message").format(referral_link=referral_link),
         parse_mode="Markdown"
     )
 
@@ -186,11 +171,17 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
 
     is_discount_time = discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time
 
-    packages = get_package_prices(discount_active=is_discount_time)
+    # Check for referral discount
+    referral_discount_active = has_referral_discount(user_id)
+
+    packages = get_package_prices(discount_active=is_discount_time, referral_discount_active=referral_discount_active)
     
     keyboard = []
-    if is_discount_time:
+    if is_discount_time or referral_discount_active:
         message_text = get_translation(lang, "topup_package_prompt_discount").format(balance=balance)
+        if referral_discount_active:
+            message_text = get_translation(lang, "topup_package_prompt_referral_discount").format(balance=balance)
+
         for package in packages:
             generations = package['generations']
             rub = package['rub']
@@ -221,7 +212,7 @@ async def topup_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             button = InlineKeyboardButton(button_text, callback_data=f'topup_package_{generations}_{rub}_{stars}_{usdt}')
             keyboard.append([button])
     
-    message_text += "\n\n" + get_translation(lang, "referral_message").format(bonus_amount=REFERRAL_BONUS, referral_link=referral_link)
+    message_text += "\n\n" + get_translation(lang, "referral_message").format(referral_link=referral_link)
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     

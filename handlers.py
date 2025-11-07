@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 import uuid
 import json
 from telegram.error import TimedOut, BadRequest
-from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position, get_user_referrer, has_referral_discount, set_referral_discount
+from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position, get_user_referrer, has_referral_discount, set_referral_discount, get_total_queue_length
 from pricing import DEMO_CONFIG, get_package_prices
 from analytics import log_event
 from states import (
@@ -23,7 +23,7 @@ from config import (
     FEEDBACK_GROUP_ID, CONFIG_EXAMPLES_DIR, CRYPTO_BOT_TOKEN, 
     ADMIN_USER_IDS, MODERATORS_GROUP_ID, REWARD_FOR_FEEDBACK,
     YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, ADMIN_USER_TAG, MODERATORS_USER_TAGS,
-    MAX_SHORTS_PER_VIDEO, REFERRER_REWARD
+    MAX_SHORTS_PER_VIDEO, REFERRER_REWARD, MAX_CONCURRENT_TASKS
 )
 from processing.demo import simulate_demo_processing
 
@@ -661,7 +661,13 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     task_tuple = (task_id, user_id, query.message.chat.id, serializable_user_data, query.message.message_id)
     await processing_queue.put(task_tuple)
     
-    queue_position = get_queue_position(task_id)
+    async with context.bot_data['busy_workers_lock']:
+        busy_workers = context.bot_data['busy_workers']
+    
+    total_queue_length = get_total_queue_length()
+    
+    # Your position in the waiting line
+    queue_position = total_queue_length - busy_workers
 
     event_data = {
         'url': context.user_data['url'],

@@ -54,6 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if is_new:
         if referrer_id:
+            set_referral_discount(user_id, True)
             set_referral_discount(referrer_id, True)
         lang = 'ru'
         set_user_language(user_id, lang)

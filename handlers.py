@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 import uuid
 import json
 from telegram.error import TimedOut, BadRequest
-from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position, get_user_referrer, has_referral_discount, set_referral_discount
+from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position, get_user_referrer, has_referral_discount, set_referral_discount, has_user_paid
 from pricing import DEMO_CONFIG, get_package_prices
 from analytics import log_event
 from states import (

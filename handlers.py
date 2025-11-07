@@ -7,7 +7,7 @@ from telegram.ext import ContextTypes, ConversationHandler
 import uuid
 import json
 from telegram.error import TimedOut, BadRequest
-from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position, get_user_referrer, has_referral_discount, set_referral_discount, has_user_paid
+from database import get_user, deduct_generation_from_balance, add_to_user_balance, add_task_to_queue, get_queue_position, get_user_referrer, has_referral_discount, set_referral_discount
 from pricing import DEMO_CONFIG, get_package_prices
 from analytics import log_event
 from states import (
@@ -787,9 +787,7 @@ async def select_topup_package(update: Update, context: ContextTypes.DEFAULT_TYP
     discount_end_time = context.bot_data.get('discount_end_time')
     is_discount_time = discount_active and discount_end_time and datetime.now(timezone.utc) < discount_end_time
 
-    is_referred = get_user_referrer(user_id) is not None
-    first_payment = not has_user_paid(user_id)
-    referral_discount_active = is_referred and first_payment
+    referral_discount_active = has_referral_discount(user_id)
 
     packages = get_package_prices(discount_active=is_discount_time, referral_discount_active=referral_discount_active)
 
@@ -954,7 +952,23 @@ async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_T
 
             add_to_user_balance(user_id_from_payload, amount)
             if has_referral_discount(user_id_from_payload):
-                set_referral_discount(user_id_from_payload, False)
+                set_referral_discount(user_id_from_payload, False) # Consume the discount
+                referrer_id = get_user_referrer(user_id_from_payload)
+                if referrer_id:
+                    add_to_user_balance(referrer_id, REFERRER_REWARD)
+                    _, _, _, referrer_lang, _ = get_user(referrer_id)
+                    try:
+                        referred_user_chat = await context.bot.get_chat(user_id_from_payload)
+                        await context.bot.send_message(
+                            chat_id=referrer_id,
+                            text=get_translation(referrer_lang, "friend_topped_up_balance").format(
+                                bonus_amount=REFERRER_REWARD,
+                                new_user_mention=referred_user_chat.mention_html()
+                            ),
+                            parse_mode="HTML"
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send referral reward notification to {referrer_id}: {e}")
             _, new_balance, _, _, _ = get_user(user_id_from_payload)
             log_event(user_id_from_payload, 'payment_success', {'provider': 'yookassa', 'generations_amount': amount, 'total_amount': float(payment.amount.value), 'currency': payment.amount.currency})
 
@@ -1081,7 +1095,23 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
 
     add_to_user_balance(user_id, generations_amount)
     if has_referral_discount(user_id):
-        set_referral_discount(user_id, False)
+        set_referral_discount(user_id, False) # Consume the discount
+        referrer_id = get_user_referrer(user_id)
+        if referrer_id:
+            add_to_user_balance(referrer_id, REFERRER_REWARD)
+            _, _, _, referrer_lang, _ = get_user(referrer_id)
+            try:
+                referred_user_chat = await context.bot.get_chat(user_id)
+                await context.bot.send_message(
+                    chat_id=referrer_id,
+                    text=get_translation(referrer_lang, "friend_topped_up_balance").format(
+                        bonus_amount=REFERRER_REWARD,
+                        new_user_mention=referred_user_chat.mention_html()
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send referral reward notification to {referrer_id}: {e}")
     _, new_balance, _, lang, _ = get_user(user_id)
 
     log_event(user_id, 'payment_success', {'provider': 'telegram_stars', 'generations_amount': generations_amount, 'total_amount': payment_info.total_amount, 'currency': payment_info.currency})
@@ -1122,7 +1152,24 @@ async def check_crypto_payment(update: Update, context: ContextTypes.DEFAULT_TYP
 
                 add_to_user_balance(user_id_from_payload, amount)
                 if has_referral_discount(user_id_from_payload):
-                    set_referral_discount(user_id_from_payload, False)
+                    set_referral_discount(user_id_from_payload, False) # Consume the discount
+                    referrer_id = get_user_referrer(user_id_from_payload)
+                    if referrer_id:
+                        add_to_user_balance(referrer_id, REFERRER_REWARD)
+                        _, _, _, referrer_lang, _ = get_user(referrer_id)
+                        try:
+                            referred_user_chat = await context.bot.get_chat(user_id_from_payload)
+                            await context.bot.send_message(
+                                chat_id=referrer_id,
+                                text=get_translation(referrer_lang, "friend_topped_up_balance").format(
+                                    bonus_amount=REFERRER_REWARD,
+                                    new_user_mention=referred_user_chat.mention_html()
+                                ),
+                                parse_mode="HTML"
+                                
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send referral reward notification to {referrer_id}: {e}")
                 _, new_balance, _, _, _ = get_user(user_id_from_payload)
                 log_event(user_id_from_payload, 'payment_success', {'provider': 'cryptobot', 'generations_amount': amount, 'total_amount': invoices[0].amount, 'currency': invoices[0].asset})
 

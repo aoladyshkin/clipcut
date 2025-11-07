@@ -1,5 +1,17 @@
 from localization import get_translation
 
+def pluralize(n, forms):
+    """
+    Russian pluralization helper.
+    e.g. pluralize(5, ('генерация', 'генерации', 'генераций'))
+    """
+    if n % 10 == 1 and n % 100 != 11:
+        return forms[0]
+    elif 2 <= n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20):
+        return forms[1]
+    else:
+        return forms[2]
+
 def format_config(config, balance=None, is_demo=False, lang='ru'):
     layout_map = {
         'square_center': '1:1',

@@ -152,5 +152,6 @@
     "no_tasks_in_queue": "You have no active tasks in the queue.",
     "your_tasks_in_queue": "<b>Your tasks in the queue:</b>",
     "task_status_item": "<b>Position:</b> {position}\n<b>URL:</b> {url}",
-    "max_shorts_exceeded": "You cannot create more than {max_shorts} shorts at a time."
+    "max_shorts_exceeded": "You cannot create more than {max_shorts} shorts at a time.",
+    "referrer_reward_notification": "🎉 A user you referred has made their first purchase! You have been awarded {reward} generations."
 }

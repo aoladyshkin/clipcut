@@ -207,6 +207,15 @@ def get_all_users_data():
         cursor.execute("SELECT user_id, balance, generated_count, referred_by, source, language FROM users")
         return cursor.fetchall()
 
+def has_user_paid(user_id: int) -> bool:
+    """Checks if a user has made a payment."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT has_referral_discount FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        # If the user has a record and has_referral_discount is False (0), it means they have made a payment.
+        return result[0] == 0 if result else False
+
 def set_referral_discount(user_id: int, status: bool):
     """Sets the referral discount status for a user."""
     with sqlite3.connect(DB_FILE) as conn:

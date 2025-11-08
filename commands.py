@@ -4,7 +4,7 @@ import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand, BotCommandScopeChat
 from telegram.ext import ContextTypes, ConversationHandler
 from telegram.error import TelegramError
-from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language, get_user_tasks_from_queue, get_queue_position, get_user_referrer, set_referral_discount, has_referral_discount
+from database import get_user, add_to_user_balance, set_user_balance, get_all_user_ids, delete_user, set_user_language, get_user_tasks_from_queue, get_queue_position, get_user_referrer, set_referral_discount, has_referral_discount, get_total_queue_length
 from analytics import log_event
 from states import GET_URL, GET_TOPUP_METHOD, GET_BROADCAST_MESSAGE, GET_FEEDBACK_TEXT, GET_TARGETED_BROADCAST_MESSAGE, GET_LANGUAGE, GET_TOPUP_PACKAGE, GET_BROADCAST_W_PRICES_MESSAGE
 from config import TUTORIAL_LINK, ADMIN_USER_IDS, REFERRER_REWARD
@@ -623,12 +623,19 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(get_translation(lang, "no_tasks_in_queue"))
         return
 
+    async with context.bot_data['busy_workers_lock']:
+        busy_workers = context.bot_data['busy_workers']
+    
+    total_queue_length = get_total_queue_length()
+    
     user_tasks = []
     for task_id, user_data_json in user_tasks_from_db:
-        position = get_queue_position(task_id)
+        absolute_position = get_queue_position(task_id)
+        # Your position in the waiting line
+        queue_position = absolute_position - busy_workers
         user_data = json.loads(user_data_json)
         user_tasks.append({
-            'position': position,
+            'position': queue_position,
             'url': user_data.get('url', 'N/A'),
             'generation_id': user_data.get('generation_id', 'N/A')
         })
@@ -636,7 +643,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     response_messages = [get_translation(lang, "your_tasks_in_queue")]
     for task in user_tasks:
         response_messages.append(
-            "\n\n" + get_translation(lang, "task_status_item").format(
+            "\n" + get_translation(lang, "task_status_item").format(
                 position=task['position'],
                 url=task['url']
                 # generation_id=task['generation_id']

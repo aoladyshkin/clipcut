@@ -88,14 +88,25 @@ def add_task_to_queue(user_id: int, chat_id: int, user_data: str, status_message
 
 def get_queue_position(task_id: int) -> int:
     """Возвращает позицию задачи в очереди."""
-    with sqlite3.connect(DB_FILE) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT COUNT(*) FROM processing_queue WHERE id <= ?",
-            (task_id,)
-        )
-        position = cursor.fetchone()[0]
-        return position
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM processing_queue WHERE id <= ?",
+        (task_id,)
+    )
+    position = cursor.fetchone()[0]
+    conn.close()
+    return position
+
+
+def get_total_queue_length() -> int:
+    """Возвращает общее количество задач в очереди."""
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM processing_queue")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
 
 def get_pending_tasks() -> list:
     """Возвращает все невыполненные задачи из очереди."""

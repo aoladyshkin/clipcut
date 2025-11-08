@@ -142,6 +142,8 @@ async def processing_worker(queue: asyncio.Queue, application: Application):
         user_data = json.loads(user_data_json)
         
         try:
+            async with application.bot_data['busy_workers_lock']:
+                application.bot_data['busy_workers'] += 1
             logger.info(f"Начинаю обработку задачи {task_id} для чата {chat_id}")
             await run_processing(chat_id, user_data, application, status_message_id)
             remove_task_from_queue(task_id)
@@ -158,6 +160,8 @@ async def processing_worker(queue: asyncio.Queue, application: Application):
             except Exception as send_e:
                 logger.error(f"Не удалось отправить сообщение об ошибке в чат {chat_id}: {send_e}")
         finally:
+            async with application.bot_data['busy_workers_lock']:
+                application.bot_data['busy_workers'] -= 1
             queue.task_done()
             logger.info(f"Завершена обработка задачи для чата {chat_id}. Задач в очереди: {queue.qsize()}")
 
@@ -273,6 +277,8 @@ async def post_init_hook(application: Application):
     # Создаем и сохраняем очередь в bot_data
     processing_queue = asyncio.Queue()
     application.bot_data['processing_queue'] = processing_queue
+    application.bot_data['busy_workers'] = 0
+    application.bot_data['busy_workers_lock'] = asyncio.Lock()
 
     # Загружаем невыполненные задачи из базы данных
     pending_tasks = get_pending_tasks()

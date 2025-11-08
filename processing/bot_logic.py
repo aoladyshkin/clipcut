@@ -190,8 +190,8 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             return 0, 0
 
         shorts_number = config.get('shorts_number', 'auto')
-        # shorts_timecodes = [{ "start": "00:00:11.0", "end": "00:00:34.0", "hook": "text"}]
-        shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
+        shorts_timecodes = [{ "start": "00:00:11.0", "end": "00:00:34.0", "hook": "text"}]
+        # shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         
         if not shorts_timecodes:
             if status_callback:

@@ -27,7 +27,7 @@ from handlers import (
     handle_user_feedback,
     start_demo,
     confirm_demo,
-    get_brainrot
+    get_brainrot,
 ) 
 from states import (
     GET_URL,

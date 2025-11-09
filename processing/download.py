@@ -252,8 +252,10 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
             'default': [
                 '-t', str(duration),
                 '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '20',
                 '-c:a', 'aac',
-                '-preset', 'fast',
+                '-b:a', '192k',
                 '-avoid_negative_ts', 'make_zero'
             ]
         }

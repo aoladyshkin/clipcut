@@ -146,8 +146,7 @@ async def processing_worker(queue: asyncio.Queue, application: Application):
                 application.bot_data['busy_workers'] += 1
             logger.info(f"Начинаю обработку задачи {task_id} для чата {chat_id}")
             await run_processing(chat_id, user_data, application, status_message_id)
-            remove_task_from_queue(task_id)
-            logger.info(f"Задача {task_id} успешно обработана и удалена из базы данных.")
+            logger.info(f"Задача {task_id} успешно обработана.")
         except Exception as e:
             logger.error(f"Ошибка в воркере для чата {chat_id}: {e}", exc_info=True)
             try:
@@ -160,6 +159,7 @@ async def processing_worker(queue: asyncio.Queue, application: Application):
             except Exception as send_e:
                 logger.error(f"Не удалось отправить сообщение об ошибке в чат {chat_id}: {send_e}")
         finally:
+            remove_task_from_queue(task_id) # This line removes the task
             async with application.bot_data['busy_workers_lock']:
                 application.bot_data['busy_workers'] -= 1
             queue.task_done()

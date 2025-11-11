@@ -80,7 +80,7 @@ def gpt_fallback_prompt(shorts_number, max_duration):
     if shorts_number != 'auto':
         prompt += f"Сгенерируй ровно {shorts_number} шортсов.\n\n"
     else:
-        prompt += f"Выбери до {MAX_SHORTS_PER_VIDEO} таких фрагментов.\n\n"
+        prompt += f"Выбери до {MAX_SHORTS_PER_VIDEO} таких фрагментов. Оптимально ~{MAX_SHORTS_PER_VIDEO//2} шт.\n\n"
     prompt += f'''
 Длительность всего видео: {max_duration} секунд.
 
@@ -91,8 +91,8 @@ def gpt_fallback_prompt(shorts_number, max_duration):
 
 Пример ответа:
 [
-  {{"start": "120.5", "end": "160.0"}},
-  {{"start": "300.2", "end": "345.8"}}
+  {{"start": "123.5", "end": "161.0"}},
+  {{"start": "315.2", "end": "347.8"}}
 ]
 '''
     return prompt
@@ -106,7 +106,7 @@ def _get_random_highlights_from_gpt(shorts_number, audio_duration):
     
     try:
         resp = client.responses.create(
-            model="gpt-4o", # Используем более быструю и дешевую модель для фолбэка
+            model="gpt-5-nano", # Используем более быструю и дешевую модель для фолбэка
             input=[{"role": "user", "content": prompt}],
         )
         raw = _response_text(resp)
@@ -124,7 +124,7 @@ def _get_random_highlights_from_gpt(shorts_number, audio_duration):
 
 def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
-    Делает запрос в Responses API (модель gpt-4o) с включённым File Search.
+    Делает запрос в Responses API (модель gpt-5) с включённым File Search.
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
     затем вызывает модель. Возвращает [{"start":"HH:MM:SS","end":"HH:MM:SS","hook":"..."}].
     """
@@ -151,7 +151,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     try:
         # 3) вызываем Responses API с подключённым file_search и нашим vector_store
         resp = client.responses.create(
-            model="gpt-4o",
+            model="gpt-5",
             input=[{"role": "user", "content": prompt}],
             tools=[
                 {

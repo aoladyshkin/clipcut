@@ -217,8 +217,14 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         )
 
         if shorts_generated_count > 0:
-            from database import get_user
+            from database import get_user, deduct_generation_from_balance
+            
+            # Deduct a generation credit for the successful operation
+            deduct_generation_from_balance(chat_id)
+            
+            # Fetch the updated balance
             _, new_balance, _, lang, _ = get_user(chat_id)
+
             log_event(chat_id, 'generation_success', {
                 'url': user_data['url'],
                 'generated_count': shorts_generated_count,

@@ -487,8 +487,6 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return ConversationHandler.END
 
-    deduct_generation_from_balance(user_id)
-
     generation_id = context.user_data.get('generation_id')
     
     # Convert user_data to a serializable format (JSON string)
@@ -504,7 +502,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     # Put the task into the in-memory queue for the worker
     processing_queue = context.bot_data['processing_queue']
-    task_tuple = (task_id, user_id, query.message.chat.id, serializable_user_data, query.message.message_id)
+    task_tuple = (task_id, user_id, query.message.chat_id, serializable_user_data, query.message.message_id)
     await processing_queue.put(task_tuple)
     
     async with context.bot_data['busy_workers_lock']:

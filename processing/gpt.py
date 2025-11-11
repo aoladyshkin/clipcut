@@ -6,7 +6,7 @@ import json
 import time
 import logging
 from openai import OpenAI
-from config import OPENAI_API_KEY
+from config import OPENAI_API_KEY, MAX_SHORTS_PER_VIDEO
 from utils import format_seconds_to_hhmmss
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -17,9 +17,11 @@ def gpt_gpt_prompt(shorts_number):
 Ты — профессиональный редактор коротких видео, работающий на фабрике контента для TikTok, YouTube Shorts и Instagram Reels.
 Твоя задача — из транскрипта длинного видео (шоу, интервью, подкаст, стрим) выбрать максимально виральные, эмоциональные и самодостаточные фрагменты, которые могут набрать миллионы просмотров.
 ''')
+    
     if shorts_number != 'auto':
         prompt += f"Найди ровно {shorts_number} самых подходящих фрагментов под эти критерии.\n\n"
-    
+    else:
+        prompt += f"Выбери до {MAX_SHORTS_PER_VIDEO} таких фрагментов.\n\n"
     prompt += ('''
 Жёсткие правила:
 
@@ -45,7 +47,7 @@ def gpt_gpt_prompt(shorts_number):
 Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст)
 Ответ — СТРОГО JSON-массив:
 
-[{"start":"SS.S","end":"SS.S","hook":"кликабельный заголовок"}]
+[{"start":"120.5","end":"160.0","hook":"кликабельный заголовок"}]
 
 В hook не используй начало транскрипта. Пиши готовый кликбейт-заголовок на том языке, на котором написана транскрипция.
 Убедись, что каждый клип дольше 20 секунд.
@@ -70,9 +72,59 @@ def _parse_captions(captions_path: str):
         
     return segments
 
+def gpt_fallback_prompt(shorts_number, max_duration):
+    prompt = f'''
+Ты — аварийный генератор таймкодов для видео. Основной AI не справился с задачей.
+Твоя задача — нарезать видео на случайные, но правдоподобные фрагменты (шортсов).
+'''
+    if shorts_number != 'auto':
+        prompt += f"Сгенерируй ровно {shorts_number} шортсов.\n\n"
+    else:
+        prompt += f"Выбери до {MAX_SHORTS_PER_VIDEO} таких фрагментов.\n\n"
+    prompt += f'''
+Длительность всего видео: {max_duration} секунд.
+
+Правила:
+1.  Каждый шортс должен длиться от 30 до 60 секунд.
+2.  Шортсы не должны пересекаться.
+3.  Выдай СТРОГО JSON-массив таймкодов.
+
+Пример ответа:
+[
+  {{"start": "120.5", "end": "160.0"}},
+  {{"start": "300.2", "end": "345.8"}}
+]
+'''
+    return prompt
+
+def _get_random_highlights_from_gpt(shorts_number, audio_duration):
+    """
+    Запасной вариант: если GPT не вернул JSON, генерируем случайные таймкоды.
+    """
+    logger.info("Запускаю фолбэк-механизм для генерации случайных шортсов.")
+    prompt = gpt_fallback_prompt(shorts_number, audio_duration)
+    
+    try:
+        resp = client.responses.create(
+            model="gpt-4o", # Используем более быструю и дешевую модель для фолбэка
+            input=[{"role": "user", "content": prompt}],
+        )
+        raw = _response_text(resp)
+        json_str = _extract_json_array(raw)
+        data = json.loads(json_str)
+        
+        # Добавляем пустой hook, чтобы структура данных была одинаковой
+        for item in data:
+            item['hook'] = "" 
+            
+        return data
+    except Exception as e:
+        logger.error(f"Фолбэк-механизм также не удался: {e}")
+        return None
+
 def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
-    Делает запрос в Responses API (модель gpt-5) с включённым File Search.
+    Делает запрос в Responses API (модель gpt-4o) с включённым File Search.
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
     затем вызывает модель. Возвращает [{"start":"HH:MM:SS","end":"HH:MM:SS","hook":"..."}].
     """
@@ -94,35 +146,43 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     # чтобы избежать пустых результатов на очень больших файлах
     _wait_vector_store_ready(vs.id)
 
-    last_error = None
     data = None
-    for attempt in range(2):
-        try:
-            # 3) вызываем Responses API с подключённым file_search и нашим vector_store
-            resp = client.responses.create(
-                model="gpt-5",
-                input=[{"role": "user", "content": prompt}],
-                tools=[
-                    {
-                        "type": "file_search",
-                        "vector_store_ids": [vs.id],
-                    }
-                ],
-            )
+    is_fallback = False
+    try:
+        # 3) вызываем Responses API с подключённым file_search и нашим vector_store
+        resp = client.responses.create(
+            model="gpt-4o",
+            input=[{"role": "user", "content": prompt}],
+            tools=[
+                {
+                    "type": "file_search",
+                    "vector_store_ids": [vs.id],
+                }
+            ],
+        )
 
-            raw = _response_text(resp)
-            json_str = _extract_json_array(raw)
-            data = json.loads(json_str)
-            
-            # Если дошли до сюда, то всё успешно
-            break 
+        raw = _response_text(resp)
+        json_str = _extract_json_array(raw)
+        data = json.loads(json_str)
 
-        except ValueError as e:
-            logger.warning(f"Попытка {attempt + 1} не удалась: в ответе GPT не найден JSON. Ошибка: {e}")
-            last_error = e
+    except ValueError as e:
+        logger.warning("Основной метод выбора хайлайтов не удался. Переключаюсь на фолбэк.")
+        caption_segments = _parse_captions(captions_path)
+        if not caption_segments:
+            raise ValueError("Не удалось спарсить субтитры для фолбэка.")
+
+        # Находим самый длинный монолог для определения максимальной длительности
+        max_duration = 0
+        if caption_segments:
+            max_duration = max(seg['end'] for seg in caption_segments)
+
+        data = _get_random_highlights_from_gpt(shorts_number, max_duration)
+        if data is None:
+            raise ValueError("Фолбэк-механизм также не смог сгенерировать таймкоды.")
+        is_fallback = True
     
     if data is None:
-        raise last_error
+        raise ValueError("Не удалось получить данные от GPT ни одним из способов.")
 
     # --- Post-processing --- 
     caption_segments = _parse_captions(captions_path)
@@ -132,35 +192,37 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         start_time = float(it["start"])
         end_time = float(it["end"])
 
-        # 1. Enforce 60-second limit
-        if end_time - start_time > 60.0:
-            end_time = start_time + 60.0
-            logger.info(f"обрезаю клип до 60 секунд: {it['hook']}")
+        # Для фолбэка пропускаем пост-обработку
+        if not is_fallback:
+            # 1. Enforce 60-second limit
+            if end_time - start_time > 60.0:
+                end_time = start_time + 60.0
+                logger.info(f"обрезаю клип до 60 секунд: {it['hook']}")
 
-        # 2. Adjust end time to the end of a sentence
-        # Find the segment where the clip ends
-        end_segment_index = -1
-        for i, seg in enumerate(caption_segments):
-            if seg['start'] <= end_time < seg['end']:
-                end_segment_index = i
-                break
-        
-        if end_segment_index != -1:
-            # Check current and next few segments for a sentence end
-            search_text = ""
-            last_segment_end_time = end_time
-            for i in range(end_segment_index, min(end_segment_index + 5, len(caption_segments))):
-                segment = caption_segments[i]
-                search_text += segment['text'] + " "
-                last_segment_end_time = segment['end']
-                
-                # If we find a sentence end, and it's within a reasonable threshold
-                if any(p in segment['text'] for p in '.!?'):
-                    new_end_time = segment['end']
-                    if new_end_time - end_time < 5.0: # 5-second threshold
-                        end_time = new_end_time
-                        logger.info(f"корректирую окончание клипа по предложению: {it['hook']}")
-                        break
+            # 2. Adjust end time to the end of a sentence
+            # Find the segment where the clip ends
+            end_segment_index = -1
+            for i, seg in enumerate(caption_segments):
+                if seg['start'] <= end_time < seg['end']:
+                    end_segment_index = i
+                    break
+            
+            if end_segment_index != -1:
+                # Check current and next few segments for a sentence end
+                search_text = ""
+                last_segment_end_time = end_time
+                for i in range(end_segment_index, min(end_segment_index + 5, len(caption_segments))):
+                    segment = caption_segments[i]
+                    search_text += segment['text'] + " "
+                    last_segment_end_time = segment['end']
+                    
+                    # If we find a sentence end, and it's within a reasonable threshold
+                    if any(p in segment['text'] for p in '.!?'):
+                        new_end_time = segment['end']
+                        if new_end_time - end_time < 5.0: # 5-second threshold
+                            end_time = new_end_time
+                            logger.info(f"корректирую окончание клипа по предложению: {it['hook']}")
+                            break
 
     
         processed_data.append({

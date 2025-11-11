@@ -113,9 +113,9 @@ def _get_random_highlights_from_gpt(shorts_number, audio_duration):
         json_str = _extract_json_array(raw)
         data = json.loads(json_str)
         
-        # Добавляем фейковый hook
+        # Добавляем пустой hook, чтобы структура данных была одинаковой
         for item in data:
-            item['hook'] = "🔥" # Используем простой хук
+            item['hook'] = "" 
             
         return data
     except Exception as e:
@@ -124,7 +124,7 @@ def _get_random_highlights_from_gpt(shorts_number, audio_duration):
 
 def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
-    Делает запрос в Responses API (модель gpt-5) с включённым File Search.
+    Делает запрос в Responses API (модель gpt-4o) с включённым File Search.
     Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
     затем вызывает модель. Возвращает [{"start":"HH:MM:SS","end":"HH:MM:SS","hook":"..."}].
     """
@@ -147,11 +147,11 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
     _wait_vector_store_ready(vs.id)
 
     data = None
-    
+    is_fallback = False
     try:
         # 3) вызываем Responses API с подключённым file_search и нашим vector_store
         resp = client.responses.create(
-            model="gpt-5",
+            model="gpt-4o",
             input=[{"role": "user", "content": prompt}],
             tools=[
                 {
@@ -179,6 +179,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         data = _get_random_highlights_from_gpt(shorts_number, max_duration)
         if data is None:
             raise ValueError("Фолбэк-механизм также не смог сгенерировать таймкоды.")
+        is_fallback = True
     
     if data is None:
         raise ValueError("Не удалось получить данные от GPT ни одним из способов.")
@@ -191,35 +192,37 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         start_time = float(it["start"])
         end_time = float(it["end"])
 
-        # 1. Enforce 60-second limit
-        if end_time - start_time > 60.0:
-            end_time = start_time + 60.0
-            logger.info(f"обрезаю клип до 60 секунд: {it['hook']}")
+        # Для фолбэка пропускаем пост-обработку
+        if not is_fallback:
+            # 1. Enforce 60-second limit
+            if end_time - start_time > 60.0:
+                end_time = start_time + 60.0
+                logger.info(f"обрезаю клип до 60 секунд: {it['hook']}")
 
-        # 2. Adjust end time to the end of a sentence
-        # Find the segment where the clip ends
-        end_segment_index = -1
-        for i, seg in enumerate(caption_segments):
-            if seg['start'] <= end_time < seg['end']:
-                end_segment_index = i
-                break
-        
-        if end_segment_index != -1:
-            # Check current and next few segments for a sentence end
-            search_text = ""
-            last_segment_end_time = end_time
-            for i in range(end_segment_index, min(end_segment_index + 5, len(caption_segments))):
-                segment = caption_segments[i]
-                search_text += segment['text'] + " "
-                last_segment_end_time = segment['end']
-                
-                # If we find a sentence end, and it's within a reasonable threshold
-                if any(p in segment['text'] for p in '.!?'):
-                    new_end_time = segment['end']
-                    if new_end_time - end_time < 5.0: # 5-second threshold
-                        end_time = new_end_time
-                        logger.info(f"корректирую окончание клипа по предложению: {it['hook']}")
-                        break
+            # 2. Adjust end time to the end of a sentence
+            # Find the segment where the clip ends
+            end_segment_index = -1
+            for i, seg in enumerate(caption_segments):
+                if seg['start'] <= end_time < seg['end']:
+                    end_segment_index = i
+                    break
+            
+            if end_segment_index != -1:
+                # Check current and next few segments for a sentence end
+                search_text = ""
+                last_segment_end_time = end_time
+                for i in range(end_segment_index, min(end_segment_index + 5, len(caption_segments))):
+                    segment = caption_segments[i]
+                    search_text += segment['text'] + " "
+                    last_segment_end_time = segment['end']
+                    
+                    # If we find a sentence end, and it's within a reasonable threshold
+                    if any(p in segment['text'] for p in '.!?'):
+                        new_end_time = segment['end']
+                        if new_end_time - end_time < 5.0: # 5-second threshold
+                            end_time = new_end_time
+                            logger.info(f"корректирую окончание клипа по предложению: {it['hook']}")
+                            break
 
     
         processed_data.append({

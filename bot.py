@@ -190,7 +190,10 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
         asyncio.run_coroutine_threadsafe(send_status_update(bot, chat_id, status_text, status_message_id, edit_message_id), main_loop)
 
     def send_video_callback(file_path, hook, start, end):
-        caption = get_translation(lang, "video_caption").format(hook=hook, start=start[:-2], end=end[:-2])
+        if hook: # Check if hook is not empty
+            caption = get_translation(lang, "video_caption").format(hook=hook, start=start[:-2], end=end[:-2])
+        else:
+            caption = get_translation(lang, "video_caption_no_hook").format(start=start[:-2], end=end[:-2])
         return asyncio.run_coroutine_threadsafe(
             send_video(
                 bot,

@@ -256,7 +256,7 @@ def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_se
                 banner_clip = (ImageClip(banner_path)
                                .set_duration(final_clip.duration)
                                .resize(width=final_clip.w * 0.5)
-                               .set_position(('left', 'top')))
+                               .set_position(('center', final_clip.h * 0.1)))
                 final_clip = CompositeVideoClip([final_clip, banner_clip])
             else:
                 logger.warning(f"Banner file not found at {banner_path}")

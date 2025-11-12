@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from aiocryptopay import AioCryptoPay, Networks
 
+from commands import topup_start
 from database import get_user, add_to_user_balance, get_user_referrer, has_referral_discount, set_referral_discount
 from pricing import get_package_prices
 from analytics import log_event
@@ -196,8 +197,7 @@ async def get_yookassa_email(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     keyboard = [
         [InlineKeyboardButton(get_translation(lang, "pay_button"), url=payment_url)],
-        [InlineKeyboardButton(get_translation(lang, "check_payment_button"), callback_data=payload)],
-        [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_package_selection')]
+        [InlineKeyboardButton(get_translation(lang, "check_payment_button"), callback_data=payload)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -288,7 +288,7 @@ async def check_yookassa_payment(update: Update, context: ContextTypes.DEFAULT_T
 
 async def back_to_package_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Goes back to the package selection screen."""
-    from commands import topup_start
+    
     return await topup_start(update, context)
 
 async def topup_stars(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -356,7 +356,6 @@ async def topup_crypto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     keyboard = [
         [InlineKeyboardButton(get_translation(lang, "pay_button"), url=payment_url)],
         [InlineKeyboardButton(get_translation(lang, "check_payment_button"), callback_data=payload)],
-        [InlineKeyboardButton(get_translation(lang, "back_button"), callback_data='back_to_package_selection')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

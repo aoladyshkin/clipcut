@@ -4,7 +4,7 @@ import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
-from database import get_user, deduct_generation_from_balance, add_task_to_queue, get_total_queue_length
+from database import get_user, get_user_tasks_from_queue, add_task_to_queue, get_total_queue_length
 from analytics import log_event
 from states import (
     GET_URL, GET_SHORTS_NUMBER, GET_LAYOUT, GET_SUBTITLES_TYPE, GET_SUBTITLE_STYLE, 
@@ -477,6 +477,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = query.from_user.id
     _, balance, _, lang, _ = get_user(user_id)
 
+    # First, check for zero balance
     if balance <= 0:
         topup_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
@@ -484,6 +485,17 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.edit_message_text(
             get_translation(lang, "out_of_generations"),
             reply_markup=topup_keyboard
+        )
+        return ConversationHandler.END
+
+    # Then, check if the user has enough balance to queue another task
+    queued_tasks_count = len(get_user_tasks_from_queue(user_id))
+    if (queued_tasks_count + 1) > balance:
+        await query.edit_message_text(
+            get_translation(lang, "insufficient_balance_for_queue").format(
+                balance=balance, 
+                queued_tasks=queued_tasks_count
+            )
         )
         return ConversationHandler.END
 
@@ -502,7 +514,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     
     # Put the task into the in-memory queue for the worker
     processing_queue = context.bot_data['processing_queue']
-    task_tuple = (task_id, user_id, query.message.chat_id, serializable_user_data, query.message.message_id)
+    task_tuple = (task_id, user_id, query.message.chat.id, serializable_user_data, query.message.message_id)
     await processing_queue.put(task_tuple)
     
     async with context.bot_data['busy_workers_lock']:

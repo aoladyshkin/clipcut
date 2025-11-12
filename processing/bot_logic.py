@@ -28,63 +28,20 @@ from localization import get_translation
 
 logger = logging.getLogger(__name__)
 
-
-
-
-
-
-
 _whisper_model = None
 
-
-
-
-
-
-
 def get_whisper_model():
-
-
-
     """Initializes and returns a singleton WhisperModel instance."""
 
-
-
     global _whisper_model
-
-
-
+    
     if _whisper_model is None:
-
-
-
         logger.info("Initializing Whisper model for the first time...")
-
-
-
         # Using "small" model. For better quality, "medium" can be used.
-
-
-
         _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
-
-
-
         logger.info("Whisper model initialized.")
 
-
-
     return _whisper_model
-
-
-
-
-
-
-
-
-
-
 
 def get_unique_output_dir(base="output"):
     n = 1
@@ -192,6 +149,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shorts_number = config.get('shorts_number', 'auto')
         
         try:
+            # shorts_timecodes = [{"start": "00:00:10.0", "end": "00:00:20.0", "hook": ""}]
             shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         except ValueError as e:
             logger.error(f"Не удалось получить хайлайты от GPT: {e}")

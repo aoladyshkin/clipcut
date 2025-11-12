@@ -12,6 +12,8 @@ from utils import format_seconds_to_hhmmss
 client = OpenAI(api_key=OPENAI_API_KEY)
 logger = logging.getLogger(__name__)
 
+VECTOR_STORE_NAME = "ClipCut Main Store"
+
 def gpt_gpt_prompt(shorts_number):
     prompt = ( '''
 Ты — профессиональный редактор коротких видео, работающий на фабрике контента для TikTok, YouTube Shorts и Instagram Reels.
@@ -44,7 +46,7 @@ def gpt_gpt_prompt(shorts_number):
 Практическая ценность — советы, лайфхаки, правила успеха.
 Сжатость — зритель должен понять суть за первые 3 секунды ролика.
 
-Файл с транскриптом приложен (формат строк: `ss.s --> ss.s` + текст)
+Файл с транскриптом приложен. Формат строк в файле: `ss.s --> ss.s` + реплика.
 Ответ — СТРОГО JSON-массив:
 
 [{"start":"120.5","end":"160.0","hook":"кликабельный заголовок"}]
@@ -124,32 +126,40 @@ def _get_random_highlights_from_gpt(shorts_number, audio_duration):
 
 def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
-    Делает запрос в Responses API (модель gpt-5) с включённым File Search.
-    Шаги: создаёт Vector Store, загружает .txt, прикрепляет его к Vector Store,
-    затем вызывает модель. Возвращает [{"start":"HH:MM:SS","end":"HH:MM:SS","hook":"..."}].
+    Использует постоянное векторное хранилище, автоматически находя его или создавая.
     """
     prompt = gpt_gpt_prompt(shorts_number)
-
-    # 1) создаём Vector Store
-    vs = client.vector_stores.create(name="shorts_captions_store")
-
-    # 2) загружаем файл и прикрепляем к Vector Store
-    with open(captions_path, "rb") as f:
-        uploaded = client.files.create(file=f, purpose="assistants")
-
-    client.vector_stores.files.create(
-        vector_store_id=vs.id,
-        file_id=uploaded.id,
-    )
-
-    # (необязательно) подождём, пока файл проиндексируется
-    # чтобы избежать пустых результатов на очень больших файлах
-    _wait_vector_store_ready(vs.id)
-
     data = None
     is_fallback = False
+    vs = None
+    uploaded_file = None
+
     try:
-        # 3) вызываем Responses API с подключённым file_search и нашим vector_store
+        # 1) Ищем существующее хранилище или создаем новое
+        vector_stores = client.vector_stores.list()
+        for store in vector_stores.data:
+            if store.name == VECTOR_STORE_NAME:
+                vs = store
+                logger.info(f"Использую существующее хранилище: {vs.id}")
+                break
+        
+        if not vs:
+            logger.info(f"Создаю новое постоянное хранилище '{VECTOR_STORE_NAME}'...")
+            vs = client.vector_stores.create(name=VECTOR_STORE_NAME)
+
+        # 2) Загружаем файл и прикрепляем к постоянному Vector Store
+        with open(captions_path, "rb") as f:
+            uploaded_file = client.files.create(file=f, purpose="assistants")
+
+        client.vector_stores.files.create(
+            vector_store_id=vs.id,
+            file_id=uploaded_file.id,
+        )
+
+        # 3) Ждём, пока файл будет готов к использованию
+        _wait_for_file_indexing(vs.id, uploaded_file.id)
+
+        # 4) Вызываем ассистента
         resp = client.responses.create(
             model="gpt-5",
             input=[{"role": "user", "content": prompt}],
@@ -165,13 +175,12 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         json_str = _extract_json_array(raw)
         data = json.loads(json_str)
 
-    except ValueError as e:
-        logger.warning("Основной метод выбора хайлайтов не удался. Переключаюсь на фолбэк.")
+    except (ValueError, TimeoutError) as e:
+        logger.warning(f"Основной метод выбора хайлайтов не удался ({e.__class__.__name__}: {e}). Переключаюсь на фолбэк.")
         caption_segments = _parse_captions(captions_path)
         if not caption_segments:
             raise ValueError("Не удалось спарсить субтитры для фолбэка.")
 
-        # Находим самый длинный монолог для определения максимальной длительности
         max_duration = 0
         if caption_segments:
             max_duration = max(seg['end'] for seg in caption_segments)
@@ -181,6 +190,17 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
             raise ValueError("Фолбэк-механизм также не смог сгенерировать таймкоды.")
         is_fallback = True
     
+    finally:
+        # Удаляем только временный файл, а не все хранилище
+        if vs and uploaded_file:
+            try:
+                logger.info(f"Удаляю файл {uploaded_file.id} из хранилища {vs.id}...")
+                client.vector_stores.files.delete(vector_store_id=vs.id, file_id=uploaded_file.id)
+                logger.info(f"Удаляю файл {uploaded_file.id} из общего хранилища...")
+                client.files.delete(file_id=uploaded_file.id)
+            except Exception as delete_e:
+                logger.error(f"Ошибка при удалении файла {uploaded_file.id}: {delete_e}")
+
     if data is None:
         raise ValueError("Не удалось получить данные от GPT ни одним из способов.")
 
@@ -192,15 +212,11 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         start_time = float(it["start"])
         end_time = float(it["end"])
 
-        # Для фолбэка пропускаем пост-обработку
         if not is_fallback:
-            # 1. Enforce 60-second limit
             if end_time - start_time > 60.0:
                 end_time = start_time + 60.0
                 logger.info(f"обрезаю клип до 60 секунд: {it['hook']}")
 
-            # 2. Adjust end time to the end of a sentence
-            # Find the segment where the clip ends
             end_segment_index = -1
             for i, seg in enumerate(caption_segments):
                 if seg['start'] <= end_time < seg['end']:
@@ -208,18 +224,14 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
                     break
             
             if end_segment_index != -1:
-                # Check current and next few segments for a sentence end
                 search_text = ""
-                last_segment_end_time = end_time
                 for i in range(end_segment_index, min(end_segment_index + 5, len(caption_segments))):
                     segment = caption_segments[i]
                     search_text += segment['text'] + " "
-                    last_segment_end_time = segment['end']
                     
-                    # If we find a sentence end, and it's within a reasonable threshold
                     if any(p in segment['text'] for p in '.!?'):
                         new_end_time = segment['end']
-                        if new_end_time - end_time < 5.0: # 5-second threshold
+                        if new_end_time - end_time < 5.0:
                             end_time = new_end_time
                             logger.info(f"корректирую окончание клипа по предложению: {it['hook']}")
                             break
@@ -233,46 +245,53 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
 
     return processed_data
 
-def _wait_vector_store_ready(vector_store_id: str, timeout_s: int = 30, poll_s: float = 1.0):
+def _wait_for_file_indexing(vector_store_id: str, file_id: str, timeout_s: int = 600):
     """
-    Простая подстраховка: ждём, пока в хранилище появятся проиндексированные файлы.
-    Если ваш SDK даёт доступ к file_counts — используем его; иначе просто спим немного.
+    Ожидает завершения индексации файла в векторном хранилище.
     """
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
+    start_time = time.time()
+    logger.info(f"Ожидание индексации файла {file_id} в хранилище {vector_store_id}...")
+    
+    while time.time() - start_time < timeout_s:
         try:
-            vs = client.vector_stores.retrieve(vector_store_id=vector_store_id)
-            # в новых SDK часто есть vs.file_counts.completed
-            fc = getattr(vs, "file_counts", None)
-            completed = getattr(fc, "completed", None) if fc else None
-            if isinstance(completed, int) and completed > 0:
+            file_status = client.vector_stores.files.retrieve(
+                vector_store_id=vector_store_id,
+                file_id=file_id
+            )
+            
+            logger.info(f"Текущий статус файла {file_id}: {file_status.status}")
+
+            if file_status.status == 'completed':
+                logger.info(f"Файл {file_id} успешно проиндексирован.")
                 return
-        except Exception:
-            pass
-        time.sleep(poll_s)
+            elif file_status.status in ['failed', 'cancelled']:
+                logger.error(f"Индексация файла {file_id} не удалась со статусом: {file_status.status}.")
+                raise ValueError(f"Индексация файла {file_id} не удалась.")
+            
+        except Exception as e:
+            logger.warning(f"Не удалось получить статус индексации файла: {e}")
+        
+        time.sleep(5)
+        
+    raise TimeoutError(f"Тайм-аут ожидания индексации файла {file_id}.")
 
 # ===== вспомогательные функции =====
 
 def _response_text(resp) -> str:
     """
     Аккуратно достает текст из ответа Responses API в разных форматах/версиях SDK.
-    Приоритет: output_text -> output[..].content[..].text -> fallback в str(resp).
     """
-    # 1) Новый SDK зачастую имеет удобное свойство:
     if hasattr(resp, "output_text") and resp.output_text:
         return resp.output_text.strip()
 
-    # 2) Универсальный разбор content-блоков
     try:
         output = getattr(resp, "output", None)
         if isinstance(output, list) and output:
-            # берем первый item
             item = output[0]
             content = getattr(item, "content", None) or item.get("content")
             if isinstance(content, list):
                 buf = []
                 for c in content:
-                    # в новых версиях текст лежит в c.get("text")
                     t = c.get("text") if isinstance(c, dict) else getattr(c, "text", None)
                     if isinstance(t, dict) and "value" in t:
                         buf.append(t["value"])
@@ -283,7 +302,6 @@ def _response_text(resp) -> str:
     except Exception:
         pass
 
-    # 3) Фолбэк
     return str(resp)
 
 
@@ -306,5 +324,3 @@ def _extract_json_array(text: str) -> str:
                 if depth == 0:
                     return text[start:i+1]
     raise ValueError("Не удалось извлечь JSON-массив из ответа GPT.")
-
-

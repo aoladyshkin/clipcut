@@ -12,7 +12,7 @@ from utils import format_seconds_to_hhmmss
 client = OpenAI(api_key=OPENAI_API_KEY)
 logger = logging.getLogger(__name__)
 
-VECTOR_STORE_NAME = "ClipCut Main Store"
+VECTOR_STORE_NAME = "ShortsFactory Main Store"
 
 def gpt_gpt_prompt(shorts_number):
     prompt = ( '''

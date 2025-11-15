@@ -253,12 +253,24 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def ask_for_brainrot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Asks the user to choose a brainrot video."""
     lang = context.user_data.get('lang', 'en')
+    # TODO: Add translations for the new buttons
     keyboard = [
         [
             InlineKeyboardButton(get_translation(lang, "gta_button"), callback_data='gta'),
             InlineKeyboardButton(get_translation(lang, "minecraft_button"), callback_data='minecraft'),
         ],
-        [InlineKeyboardButton(get_translation(lang, "no_brainrot_button"), callback_data='no_brainrot')]
+        [
+            InlineKeyboardButton("Subway Surfers", callback_data='subway_surfers'),
+            InlineKeyboardButton("Slither.io", callback_data='slitherio'),
+        ],
+        [
+            InlineKeyboardButton("Gran Turismo", callback_data='gran_turismo'),
+            InlineKeyboardButton("Bouncing Balls", callback_data='bouncing_balls'),
+        ],
+        [
+            InlineKeyboardButton("Ball Escape", callback_data='ball_escape'),
+            InlineKeyboardButton(get_translation(lang, "no_brainrot_button"), callback_data='no_brainrot')
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

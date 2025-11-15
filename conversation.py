@@ -83,7 +83,7 @@ def get_conv_handler():
                 CallbackQueryHandler(get_layout, pattern='^(9_16|16_9|1_1)$'),
             ],
             GET_BRAINROT: [
-                CallbackQueryHandler(get_brainrot, pattern='^(gta|minecraft|no_brainrot)$'),
+                CallbackQueryHandler(get_brainrot, pattern='^(gta|minecraft|subway_surfers|slitherio|gran_turismo|bouncing_balls|ball_escape|no_brainrot)$'),
             ],
             GET_FACE_TRACKING: [
                 CallbackQueryHandler(get_face_tracking, pattern='^(track_yes|track_no)$'),

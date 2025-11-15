@@ -350,14 +350,36 @@ def get_subtitle_items(subtitles_type: str,
             return [] # Return empty list on error
 
     else:  # 'phrases'
-        for ts in transcript_segments:
-            s = float(ts.get("start", 0.0))
-            e = float(ts.get("end", 0.0))
-            if (s >= start_cut and e <= end_cut) or (s < start_cut < e) or (s < end_cut < e):
+        # Heuristic to check if we're dealing with a pre-clipped transcript (e.g., from a Twitch clip)
+        # If the last segment ends before the absolute start_cut, it must be a transcript of a clip.
+        is_pre_clipped = False
+        if transcript_segments:
+            try:
+                last_segment_end = float(transcript_segments[-1].get('end', 0.0))
+                if last_segment_end < start_cut:
+                    is_pre_clipped = True
+            except (IndexError, TypeError):
+                pass # Not a list or empty list, proceed with normal logic
+
+        if is_pre_clipped:
+            # For Twitch/pre-clipped, timestamps are already relative to the clip start.
+            logger.info("Detected pre-clipped transcript for 'phrases' subtitles.")
+            for ts in transcript_segments:
                 items.append({
                     "text": ts.get("text", ""),
-                    "start": s - start_cut,
-                    "end": e - start_cut
+                    "start": float(ts.get("start", 0.0)),
+                    "end": float(ts.get("end", 0.0))
                 })
+        else:
+            # Original logic for YouTube (full transcript)
+            for ts in transcript_segments:
+                s = float(ts.get("start", 0.0))
+                e = float(ts.get("end", 0.0))
+                if (s >= start_cut and e <= end_cut) or (s < start_cut < e) or (s < end_cut < e):
+                    items.append({
+                        "text": ts.get("text", ""),
+                        "start": s - start_cut,
+                        "end": e - start_cut
+                    })
 
     return items

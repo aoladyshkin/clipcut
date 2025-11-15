@@ -4,7 +4,12 @@ import subprocess
 import math
 import tempfile
 from pytubefix import YouTube
-from openai import OpenAI
+import logging
+import pysubs2
+from faster_whisper import WhisperModel
+from spellchecker import SpellChecker
+
+logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
 load_dotenv()
 from pathlib import Path
@@ -12,7 +17,20 @@ import xml.etree.ElementTree as ET
 import html, re
 from typing import List, Dict, Tuple, Optional
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+client = None # No longer using OpenAI API
+
+_whisper_model = None
+
+def get_whisper_model():
+    """Initializes and returns a singleton WhisperModel instance."""
+    global _whisper_model
+    if _whisper_model is None:
+        logger.info("Initializing Whisper model for the first time...")
+        # Using "small" model. For better quality, "medium" can be used.
+        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+        logger.info("Whisper model initialized.")
+    return _whisper_model
+
 
 # =========================
 # УТИЛИТЫ ЯЗЫК/КАПШНЫ
@@ -279,62 +297,32 @@ def get_audio_duration(audio_path):
     except ValueError:
         return None
 
-def transcribe_via_whisper(audio_path) -> List[Dict[str, float]]:
-    file_size_mb = os.path.getsize(audio_path) / (1024 * 1024)
-    audio_duration = get_audio_duration(audio_path)
-    if audio_duration is None:
-        raise Exception(f"Не удалось определить длительность аудио: {audio_path}")
+def transcribe_via_faster_whisper(audio_path) -> List[Dict[str, float]]:
+    """
+    Transcribes the given audio file using the local faster-whisper model.
+    """
+    model = get_whisper_model()
+    
+    segments, _ = model.transcribe(
+        str(audio_path),
+        task="transcribe",
+        word_timestamps=False, # We only need phrase-level timestamps here
+        beam_size=5,
+        best_of=5,
+        temperature=0.0
+    )
 
-    full_transcript: List[Dict[str, float]] = []
-
-    def _append_segments(segments, offset=0.0):
-        for seg in segments:
-            full_transcript.append({
-                "start": float(seg.start) + offset,
-                "end": float(seg.end) + offset,
-                "text": str(seg.text).strip()
-            })
-
-    if file_size_mb > 24 or audio_duration > MAX_AUDIO_DURATION_SECONDS:
-        num_chunks = math.ceil(audio_duration / MAX_AUDIO_DURATION_SECONDS)
-        for i in range(num_chunks):
-            print(f"Транскрибируем часть {i+1}/{num_chunks}...")
-            start_time = i * MAX_AUDIO_DURATION_SECONDS
-            end_time = min((i + 1) * MAX_AUDIO_DURATION_SECONDS, audio_duration)
-
-            with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp_file:
-                chunk_path = tmp_file.name
-
-            cmd = [
-                "ffmpeg", "-i", str(audio_path),
-                "-ss", str(start_time), "-to", str(end_time),
-                "-ac", "1", "-ar", "24000",
-                "-c:a", "libopus", "-b:a", "32k",
-                "-y", chunk_path
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                os.remove(chunk_path)
-                raise Exception(f"ffmpeg error: {result.stderr}")
-
-            with open(chunk_path, "rb") as f:
-                chunk_transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=f,
-                    response_format="verbose_json"
-                )
-            os.remove(chunk_path)
-            _append_segments(chunk_transcript.segments, offset=start_time)
-    else:
-        with open(audio_path, "rb") as f:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=f,
-                response_format="verbose_json"
-            )
-        _append_segments(transcript.segments, offset=0.0)
-
-    return full_transcript
+    # Convert generator to list of dicts
+    transcript_list = []
+    for segment in segments:
+        transcript_list.append({
+            "start": segment.start,
+            "end": segment.end,
+            "text": segment.text.strip()
+        })
+    
+    logger.info(f"Transcription via faster-whisper complete for {audio_path}.")
+    return transcript_list
 
 # =========================
 # ЕДИНАЯ ТОЧКА: ПОЛУЧИТЬ СЕГМЕНТЫ И ЗАПИСАТЬ SRT
@@ -349,7 +337,8 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
     chosen_code = None
 
     if force_whisper or is_twitch_clip:
-        segments = transcribe_via_whisper(audio_path)
+        # This path is now taken for Twitch clips and YouTube transcription fallbacks
+        segments = transcribe_via_faster_whisper(audio_path)
     else:
         try:
             segments, chosen_code = download_captions_from_youtube(url)

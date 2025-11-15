@@ -15,7 +15,7 @@ from moviepy.editor import (
 )
 import json
 from faster_whisper import WhisperModel
-from processing.transcription import get_transcript_segments_and_file, get_audio_duration
+from processing.transcription import get_transcript_segments_and_file, get_audio_duration, get_whisper_model
 from processing.subtitles import create_ass_subtitles, get_subtitle_items
 from config import VIDEO_MAP
 from .download import download_video_segment, download_audio_only, get_video_duration
@@ -28,20 +28,6 @@ from localization import get_translation
 
 logger = logging.getLogger(__name__)
 
-_whisper_model = None
-
-def get_whisper_model():
-    """Initializes and returns a singleton WhisperModel instance."""
-
-    global _whisper_model
-    
-    if _whisper_model is None:
-        logger.info("Initializing Whisper model for the first time...")
-        # Using "small" model. For better quality, "medium" can be used.
-        _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
-        logger.info("Whisper model initialized.")
-
-    return _whisper_model
 
 def get_unique_output_dir(base="output"):
     n = 1

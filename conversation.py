@@ -60,7 +60,11 @@ def get_conv_handler():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/')), url_entrypoint),
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND & 
+                (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/') | filters.Regex(r'twitch\.tv/')), 
+                url_entrypoint
+            ),
             CallbackQueryHandler(start_demo, pattern='^start_demo$'),
             CommandHandler("topup", topup_start),
             CallbackQueryHandler(topup_start, pattern='^topup_start$'),

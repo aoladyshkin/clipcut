@@ -339,7 +339,7 @@ def transcribe_via_whisper(audio_path) -> List[Dict[str, float]]:
 # =========================
 # ЕДИНАЯ ТОЧКА: ПОЛУЧИТЬ СЕГМЕНТЫ И ЗАПИСАТЬ SRT
 # =========================
-def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="", force_whisper=False) -> Tuple[List[Dict[str, any]], str]:
+def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="", force_whisper=False, is_twitch_clip=False) -> Tuple[List[Dict[str, any]], str]:
     """
     Возвращает сегменты [{start,end,text}] и ПРИ ЭТОМ создаёт файл captions.txt
     одинаковым способом для обоих источников (YouTube/Whisper).
@@ -348,7 +348,7 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
     audio_duration = get_audio_duration(audio_path)
     chosen_code = None
 
-    if force_whisper:
+    if force_whisper or is_twitch_clip:
         segments = transcribe_via_whisper(audio_path)
     else:
         try:
@@ -360,8 +360,9 @@ def get_transcript_segments_and_file(url, audio_path="audio_only.ogg", out_dir="
             
     segments = normalize_segments(segments, duration=audio_duration)
 
-    # ЕДИНАЯ запись в TXT (нормализация внутри write_captions_file)
-    write_captions_file(segments, filename=(Path(out_dir) / "captions.txt"))
+    if not is_twitch_clip:
+        # ЕДИНАЯ запись в TXT (нормализация внутри write_captions_file)
+        write_captions_file(segments, filename=(Path(out_dir) / "captions.txt"))
 
     # Вернём уже нормализованные сегменты, чтобы совпадали с тем, что в файле
     return segments, chosen_code.replace("a.", "") if chosen_code else "ru"

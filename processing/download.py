@@ -1,32 +1,67 @@
-# -*- coding: utf-8 -*- 
-
+import shutil
 import os
 import subprocess
 import re
-import shutil
 import json
 import yt_dlp
 from pathlib import Path
 from pytubefix import YouTube
 from config import YOUTUBE_COOKIES_FILE, FREESPACE_LIMIT_MB
-
+from typing import Optional, List, Dict, Tuple, Set
+from utils import get_video_platform
+from localization import get_translation
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-from localization import get_translation
+def get_video_duration(url: str) -> Optional[float]:
+    """
+    Retrieves the duration of a video in seconds using yt-dlp.
+    """
+    try:
+        cleaned_url = url.split('?')[0]
+        ydl_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'simulate': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+            }
+        }
+        if get_video_platform(cleaned_url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+            ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
 
-def _get_yt_dlp_command(base_command):
-    if YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
-        # Insert --cookies after the initial 'python -m yt_dlp' part
-        return base_command[:3] + ["--cookies", YOUTUBE_COOKIES_FILE] + base_command[3:]
-    return base_command
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(cleaned_url, download=False)
+            
+            duration = info_dict.get('duration')
+            
+            # Fallback for Twitch VODs where duration is in the last chapter's end_time
+            if duration is None:
+                chapters = info_dict.get('chapters')
+                if chapters and isinstance(chapters, list):
+                    try:
+                        last_chapter = chapters[-1]
+                        if last_chapter and isinstance(last_chapter, dict):
+                            duration = last_chapter.get('end_time')
+                            if duration:
+                                logger.info(f"Found duration for Twitch VOD in 'chapters' list: {duration}")
+                    except (IndexError, TypeError):
+                        pass # Ignore if chapters list is empty or not structured as expected
+            
+            if duration is None:
+                logger.warning(f"Could not find 'duration' in any known location for {cleaned_url}.")
+
+            return duration
+    except Exception as e:
+        logger.error(f"Exception in get_video_duration for {url} with yt-dlp: {e}")
+        raise e
 
 def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     """
-    Checks if a YouTube video is available, has subtitles, and if there is enough disk space.
-    First tries pytubefix for availability and subtitles, then falls back to yt-dlp.
+    Checks if a video is available and if there is enough disk space.
+    For YouTube, it also checks for subtitles.
     Returns a tuple (is_available, message, error_log).
     """
     # 0. Check for disk space
@@ -34,67 +69,88 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     if free_space_mb < FREESPACE_LIMIT_MB:
         return False, get_translation(lang, "not_enough_disk_space"), "not enough disk space"
 
-    # 1. Check for video availability and subtitles
-    try:
-        # First, try with pytubefix
-        yt = YouTube(url)
-        _ = yt.title
-        if not yt.streams:
-            return False, get_translation(lang, "no_streams_found"), "no streams"
-        
-        # Check for any available captions
-        if not yt.captions:
-            return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
+    platform = get_video_platform(url)
 
-    except Exception as e:
-        logger.warning(f"pytubefix failed to check video availability or subtitles: {e}. Falling back to yt-dlp.")
-        # If pytubefix fails, try with yt-dlp for both checks
+    # 1. Check for video availability
+    if platform == 'youtube':
+        try:
+            # First, try with pytubefix (often faster for basic checks)
+            yt = YouTube(url)
+            _ = yt.title
+            if not yt.streams:
+                return False, get_translation(lang, "no_streams_found"), "no streams"
+            
+            if not yt.captions:
+                return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
+
+        except Exception as e:
+            logger.warning(f"pytubefix failed: {e}. Falling back to yt-dlp.")
+            is_available_yt_dlp, message_yt_dlp, err_yt_dlp = _check_video_availability_yt_dlp(url, lang)
+            if not is_available_yt_dlp:
+                return False, message_yt_dlp, err_yt_dlp
+            
+            if not _check_subtitles_availability_yt_dlp(url):
+                return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
+    
+    elif platform == 'twitch':
         is_available_yt_dlp, message_yt_dlp, err_yt_dlp = _check_video_availability_yt_dlp(url, lang)
         if not is_available_yt_dlp:
             return False, message_yt_dlp, err_yt_dlp
-        
-        # Subtitle check with yt-dlp as a fallback
-        if not _check_subtitles_availability_yt_dlp(url):
-            return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
+    
+    else:
+        return False, "Unsupported video platform", "unsupported_platform"
 
-    # 2. If all checks passed, return success
     return True, get_translation(lang, "video_available"), "Video is available"
 
 def _check_subtitles_availability_yt_dlp(url: str) -> bool:
     """
-    Checks if subtitles are available for a video using yt-dlp.
+    Checks if subtitles are available for a video using the yt-dlp API.
     """
     try:
-        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "--list-subs", "--skip-download", url])
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
-        # If yt-dlp finds subtitles, it will list them. If not, the output will be empty or show "no subtitles".
-        if "Available subtitles" in result.stdout or "Available automatic captions" in result.stdout:
-            return True
-        return False
-    except subprocess.CalledProcessError as e:
-        # If the video is unavailable, yt-dlp might return an error, which is fine.
-        # We are only interested in cases where we can check for subs.
-        logger.warning(f"yt-dlp returned an error when checking for subtitles, but we proceed: {e.stderr}")
-        # We can assume there are no subtitles if the command fails,
-        # as availability is checked before this function is called.
-        return False
+        cleaned_url = url.split('?')[0]
+        ydl_opts = {
+            'listsubtitles': True,
+            'quiet': True,
+            'skip_download': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+            }
+        }
+        if get_video_platform(cleaned_url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+            ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(cleaned_url, download=False)
+            return bool(info_dict.get('subtitles') or info_dict.get('automatic_captions'))
     except Exception as e:
-        logger.error(f"An unexpected error occurred while checking for subtitles with yt-dlp: {e}")
+        logger.error(f"An unexpected error occurred while checking for subtitles with yt-dlp API: {e}")
         return False
 
 def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, str):
     """
-    Checks video availability using yt-dlp.
+    Checks video availability using the yt-dlp API.
     """
     try:
-        command = _get_yt_dlp_command(["python3", "-m", "yt_dlp", "--get-title", "--skip-download", url])
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
-        if result.stdout.strip():
-            return True, get_translation(lang, "video_available"), "Video is available"
-        else:
-            return False, get_translation(lang, "unavailable_video_error"), "yt-dlp found no title"
-    except subprocess.CalledProcessError as e:
-        error_message = e.stderr.lower()
+        cleaned_url = url.split('?')[0]
+        ydl_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'simulate': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+            }
+        }
+        if get_video_platform(cleaned_url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+            ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(cleaned_url, download=False)
+            if info_dict.get('title'):
+                return True, get_translation(lang, "video_available"), "Video is available"
+            else:
+                return False, get_translation(lang, "unavailable_video_error"), "yt-dlp found no title"
+    except yt_dlp.utils.DownloadError as e:
+        error_message = str(e).lower()
         if "age restricted" in error_message:
             return False, get_translation(lang, "age_restricted_error"), "age restricted"
         if "private" in error_message:
@@ -113,7 +169,8 @@ from typing import List, Dict, Tuple, Optional, Set
 def _get_available_audio_langs(url: str, yt_dlp_command: list) -> Set[str]:
     """Использует yt-dlp для получения списка всех доступных языков аудио."""
     try:
-        command = yt_dlp_command + ["-F", url]
+        command = list(yt_dlp_command) # Create a copy
+        command.extend(["-F", url])
         result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
         lines = result.stdout.split('\n')
         
@@ -199,7 +256,8 @@ def _pick_lang_and_caption(yt, available_audio_langs: Set[str]) -> Tuple[Optiona
 def _find_itag_for_lang_with_yt_dlp(url, lang: str, yt_dlp_command: list):
     print(f"Используем yt-dlp для поиска itag для языка '{lang}'...")
     try:
-        command = yt_dlp_command + ["-F", url]
+        command = list(yt_dlp_command) # Create a copy
+        command.extend(["-F", url])
         result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=20)
 
         lines = result.stdout.split('\n')
@@ -261,7 +319,7 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
         }
     }
 
-    if YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+    if get_video_platform(url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
         ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
 
     try:
@@ -286,7 +344,10 @@ def download_audio_only(url, audio_path):
     """
     audio_path = Path(audio_path).with_suffix(".ogg")
     temp_path = audio_path.with_suffix(".temp.mp4")
-    base_yt_dlp_command = _get_yt_dlp_command(["python3", "-m", "yt_dlp"])
+    
+    base_yt_dlp_command = ["python3", "-m", "yt_dlp"]
+    base_yt_dlp_command.extend(_get_cookie_args(url))
+
 
     itag = None
     try:
@@ -313,7 +374,8 @@ def download_audio_only(url, audio_path):
     if itag:
         print(f"Попытка скачать аудио с itag={itag} с помощью yt-dlp...")
         try:
-            command = base_yt_dlp_command + ["-f", itag, "--user-agent", "Mozilla/5.0", "-o", str(temp_path), url]
+            command = list(base_yt_dlp_command)
+            command.extend(["-f", itag, "--user-agent", "Mozilla/5.0", "-o", str(temp_path), url])
             subprocess.run(command, check=True, timeout=300)
             print("yt-dlp: Аудио успешно скачано.")
             downloaded = True

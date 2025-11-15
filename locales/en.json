@@ -38,7 +38,7 @@
     "reject_button_emoji": "❌ Reject",
     "demo_mode_started": "<b>✨ Demo mode started!</b>\n\n🎬 Source video: {url}\n{settings_text}",
     "out_of_generations": "You are out of generations. Please top up your balance.",
-    "send_correct_youtube_link": "Please send a correct YouTube video link.",
+    "send_correct_youtube_link": "Please send a correct YouTube or Twitch video link.",
     "how_many_shorts_prompt": "How many shorts should I make? Send a number or press \"Auto\"",
     "auto_button": "Auto",
     "choose_layout_prompt": "Choose the short's layout:",

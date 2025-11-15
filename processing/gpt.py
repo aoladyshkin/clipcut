@@ -99,7 +99,7 @@ def gpt_fallback_prompt(shorts_number, max_duration):
 '''
     return prompt
 
-def _get_random_highlights_from_gpt(shorts_number, audio_duration):
+def get_random_highlights_from_gpt(shorts_number, audio_duration):
     """
     Запасной вариант: если GPT не вернул JSON, генерируем случайные таймкоды.
     """
@@ -185,7 +185,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         if caption_segments:
             max_duration = max(seg['end'] for seg in caption_segments)
 
-        data = _get_random_highlights_from_gpt(shorts_number, max_duration)
+        data = get_random_highlights_from_gpt(shorts_number, max_duration)
         if data is None:
             raise ValueError("Фолбэк-механизм также не смог сгенерировать таймкоды.")
         is_fallback = True

@@ -60,7 +60,11 @@ def get_conv_handler():
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/')), url_entrypoint),
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND & 
+                (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/') | filters.Regex(r'twitch\.tv/')), 
+                url_entrypoint
+            ),
             CallbackQueryHandler(start_demo, pattern='^start_demo$'),
             CommandHandler("topup", topup_start),
             CallbackQueryHandler(topup_start, pattern='^topup_start$'),
@@ -79,7 +83,7 @@ def get_conv_handler():
                 CallbackQueryHandler(get_layout, pattern='^(9_16|16_9|1_1)$'),
             ],
             GET_BRAINROT: [
-                CallbackQueryHandler(get_brainrot, pattern='^(gta|minecraft|no_brainrot)$'),
+                CallbackQueryHandler(get_brainrot, pattern='^(gta|minecraft|subway_surfers|slitherio|gran_turismo|bouncing_balls|ball_escape|no_brainrot)$'),
             ],
             GET_FACE_TRACKING: [
                 CallbackQueryHandler(get_face_tracking, pattern='^(track_yes|track_no)$'),

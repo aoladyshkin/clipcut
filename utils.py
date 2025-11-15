@@ -61,3 +61,10 @@ def to_seconds(t: str) -> float:
     h, m, s_part = t.split(':')
     s = float(s_part)
     return int(h) * 3600 + int(m) * 60 + s
+
+def get_video_platform(url: str):
+    if "youtube.com/" in url or "youtu.be/" in url:
+        return "youtube"
+    if "twitch.tv/" in url:
+        return "twitch"
+    return None

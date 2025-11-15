@@ -12,7 +12,7 @@ from states import (
 )
 from localization import get_translation
 from processing.download import check_video_availability
-from utils import format_config
+from utils import format_config, get_video_platform
 from config import (
     CONFIG_EXAMPLES_DIR, ADMIN_USER_IDS, MODERATORS_GROUP_ID,
     ADMIN_USER_TAG, MAX_SHORTS_PER_VIDEO
@@ -48,9 +48,12 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data['generation_id'] = generation_id
     log_event(update.effective_user.id, 'config_video_url_provided', {'url': url, 'generation_id': generation_id})
 
-    if "youtube.com/" not in url and "youtu.be/" not in url:
-        await update.message.reply_text(get_translation(lang, "send_correct_youtube_link"))
+    platform = get_video_platform(url)
+    if not platform:
+        await update.message.reply_text(get_translation(lang, "send_correct_youtube_link")) # TODO: Update translation for Twitch
         return GET_URL
+
+    context.user_data['config']['platform'] = platform
 
     # Send a "checking" message
     checking_message = await update.message.reply_text(get_translation(lang, "checking_video_availability"))
@@ -77,12 +80,7 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return GET_URL
 
     context.user_data['url'] = url
-    logger.info(f"User {update.effective_user.id} provided URL: {url}")
-
-    # Set default transcription method
-    context.user_data['config'] = {}
-    context.user_data['config']['force_ai_transcription'] = False
-    logger.info(f"Config for {update.effective_user.id}: force_ai_transcription = False (default)")
+    logger.info(f"User {update.effective_user.id} provided URL: {url} (platform: {platform})")
 
     keyboard = [
         [
@@ -255,12 +253,24 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def ask_for_brainrot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Asks the user to choose a brainrot video."""
     lang = context.user_data.get('lang', 'en')
+    # TODO: Add translations for the new buttons
     keyboard = [
         [
             InlineKeyboardButton(get_translation(lang, "gta_button"), callback_data='gta'),
             InlineKeyboardButton(get_translation(lang, "minecraft_button"), callback_data='minecraft'),
         ],
-        [InlineKeyboardButton(get_translation(lang, "no_brainrot_button"), callback_data='no_brainrot')]
+        [
+            InlineKeyboardButton("Subway Surfers", callback_data='subway_surfers'),
+            InlineKeyboardButton("Slither.io", callback_data='slitherio'),
+        ],
+        [
+            InlineKeyboardButton("Gran Turismo", callback_data='gran_turismo'),
+            InlineKeyboardButton("Bouncing Balls", callback_data='bouncing_balls'),
+        ],
+        [
+            InlineKeyboardButton("Ball Escape", callback_data='ball_escape'),
+            InlineKeyboardButton(get_translation(lang, "no_brainrot_button"), callback_data='no_brainrot')
+        ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

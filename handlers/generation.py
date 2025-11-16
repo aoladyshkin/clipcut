@@ -103,7 +103,7 @@ async def get_shorts_number_auto(update: Update, context: ContextTypes.DEFAULT_T
     lang = context.user_data.get('lang', 'en')
     context.user_data['config']['shorts_number'] = 'auto'
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_shorts_number_selected', {'choice': 'auto', 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_shorts_number_selected', {'choice': 'auto', 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: shorts_number = 'auto'")
 
     keyboard = [
@@ -176,7 +176,7 @@ async def get_shorts_number_manual(update: Update, context: ContextTypes.DEFAULT
 
         context.user_data['config']['shorts_number'] = number
         generation_id = context.user_data.get('generation_id')
-        log_event(update.effective_user.id, 'config_step_shorts_number_selected', {'choice': number, 'generation_id': generation_id})
+        # log_event(update.effective_user.id, 'config_step_shorts_number_selected', {'choice': number, 'generation_id': generation_id})
         logger.info(f"Config for {update.effective_user.id}: shorts_number = {number}")
 
         keyboard = [
@@ -207,7 +207,7 @@ async def get_subtitle_style(update: Update, context: ContextTypes.DEFAULT_TYPE)
     lang = context.user_data.get('lang', 'en')
     context.user_data['config']['subtitle_style'] = query.data
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_subtitle_style_selected', {'choice': query.data, 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_subtitle_style_selected', {'choice': query.data, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: subtitle_style = {query.data}")
 
     # Set default capitalization
@@ -224,7 +224,7 @@ async def get_layout(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     layout_choice = query.data
     context.user_data['layout_choice'] = layout_choice  # Store the raw choice
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_layout_selected', {'choice': layout_choice, 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_layout_selected', {'choice': layout_choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: layout_choice = {layout_choice}")
 
     await query.message.delete()
@@ -305,7 +305,7 @@ async def get_brainrot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             context.user_data['config']['layout'] = 'full_top_brainrot_bottom'
 
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_brainrot_selected', {'choice': brainrot_choice, 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_brainrot_selected', {'choice': brainrot_choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: bottom_video = {context.user_data['config']['bottom_video']}")
     logger.info(f"Config for {query.from_user.id}: layout = {context.user_data['config']['layout']}")
 
@@ -353,7 +353,7 @@ async def get_face_tracking(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data['config']['use_face_tracking'] = choice
 
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_face_tracking_selected', {'choice': choice, 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_face_tracking_selected', {'choice': choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: use_face_tracking = {choice}")
 
     await query.message.delete()
@@ -383,7 +383,7 @@ async def get_subtitles_type(update: Update, context: ContextTypes.DEFAULT_TYPE)
     choice = query.data
     context.user_data['config']['subtitles_type'] = choice
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_subtitles_type_selected', {'choice': choice, 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_subtitles_type_selected', {'choice': choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: subtitles_type = {choice}")
 
     if choice == 'no_subtitles':
@@ -457,7 +457,7 @@ async def get_banner_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     choice = query.data == 'banner_yes'
     context.user_data['config']['add_banner'] = choice
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_banner_selected', {'choice': choice, 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_banner_selected', {'choice': choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: add_banner = {choice}")
 
     settings_text = format_config(context.user_data['config'], balance, lang=lang)
@@ -563,7 +563,7 @@ async def get_bottom_video(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     choice = query.data if query.data != 'none' else None
     context.user_data['config']['bottom_video'] = choice
     generation_id = context.user_data.get('generation_id')
-    log_event(query.from_user.id, 'config_step_bottom_video_selected', {'choice': choice, 'generation_id': generation_id})
+    # log_event(query.from_user.id, 'config_step_bottom_video_selected', {'choice': choice, 'generation_id': generation_id})
     logger.info(f"Config for {query.from_user.id}: bottom_video = {choice}")
 
     keyboard = [

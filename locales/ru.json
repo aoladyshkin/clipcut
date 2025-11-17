@@ -52,7 +52,7 @@
     "no_subtitles_button": "Без субтитров",
     "image_load_failed_subs_prompt": "Не удалось загрузить изображение. Выберите, как отображать субтитры:",
     "unexpected_error_try_again": "Произошла непредвиденная ошибка. Пожалуйста, попробуйте еще раз: /start",
-    "choose_brainrot_video_prompt": "Разбавить видео фоновым экшеном?",
+    "choose_brainrot_video_prompt": "Добавить brainrot-видео для залипательности?",
     "image_load_failed_brainrot_prompt": "Не удалось загрузить изображение. Выберите brainrot видео:",
     "gta_button": "GTA",
     "minecraft_button": "Minecraft",

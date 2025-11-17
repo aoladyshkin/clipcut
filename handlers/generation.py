@@ -46,9 +46,9 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     url = update.message.text
     generation_id = str(uuid.uuid4())
     context.user_data['generation_id'] = generation_id
+    platform = get_video_platform(url)
     log_event(update.effective_user.id, 'config_video_url_provided', {'url': url, 'generation_id': generation_id, 'platform': platform})
 
-    platform = get_video_platform(url)
     if not platform:
         await update.message.reply_text(get_translation(lang, "send_correct_youtube_link")) # TODO: Update translation for Twitch
         return GET_URL

@@ -37,7 +37,7 @@ VIDEO_MAP = {
     'minecraft': str(KEEPERS_DIR / 'minecraft_parkur.mp4'),
     'subway_surfers': str(KEEPERS_DIR / 'subway_surfers.mp4'),
     'slitherio': str(KEEPERS_DIR / 'slitherio.mp4'),
-    'gran_turismo': str(KEEPERS_DIR / 'gran_turismo.mp4'),
+    'forza': str(KEEPERS_DIR / 'forza.mp4'),
     'bouncing_balls': str(KEEPERS_DIR / 'bouncing_balls.mp4'),
     'ball_escape': str(KEEPERS_DIR / 'ball_escape.mp4')
 }

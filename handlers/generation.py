@@ -264,7 +264,7 @@ async def ask_for_brainrot(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             InlineKeyboardButton("Slither.io", callback_data='slitherio'),
         ],
         [
-            InlineKeyboardButton("Gran Turismo", callback_data='gran_turismo'),
+            InlineKeyboardButton("Forza", callback_data='forza'),
             InlineKeyboardButton("Bouncing Balls", callback_data='bouncing_balls'),
         ],
         [

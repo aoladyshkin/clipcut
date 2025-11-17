@@ -96,6 +96,16 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
         is_available_yt_dlp, message_yt_dlp, err_yt_dlp = _check_video_availability_yt_dlp(url, lang)
         if not is_available_yt_dlp:
             return False, message_yt_dlp, err_yt_dlp
+        
+        # Check if we can get the duration for Twitch videos
+        try:
+            duration = get_video_duration(url)
+            if duration is None:
+                logger.warning(f"Could not get duration for Twitch video: {url}")
+                return False, get_translation(lang, "video_unavailable_check_link"), "twitch_video_no_duration"
+        except Exception as e:
+            logger.error(f"Error getting duration for Twitch video {url}: {e}")
+            return False, get_translation(lang, "video_unavailable_check_link"), str(e)
     
     else:
         return False, "Unsupported video platform", "unsupported_platform"

@@ -325,7 +325,7 @@ def main():
     conv_handler = get_conv_handler()
 
     broadcast_topup_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(broadcast_topup_package_selection, pattern=r'^topup_package_')],
+        entry_points=[CallbackQueryHandler(broadcast_topup_package_selection, pattern=r'^topup_package_\d+$')],
         states={
             GET_TOPUP_METHOD: [
                 CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),

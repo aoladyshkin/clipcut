@@ -114,7 +114,7 @@ def get_conv_handler():
                 CallbackQueryHandler(skip_feedback, pattern='^skip_feedback$')
             ],
             GET_TOPUP_PACKAGE: [
-                CallbackQueryHandler(select_topup_package, pattern='^topup_package_'),
+                CallbackQueryHandler(select_topup_package, pattern=r'^topup_package_\d+_'),
             ],
             GET_TOPUP_METHOD: [
                 CallbackQueryHandler(topup_stars, pattern='^topup_stars$'),

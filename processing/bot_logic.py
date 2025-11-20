@@ -121,7 +121,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shorts_number = config.get('shorts_number', 'auto')
         
         try:
-            # shorts_timecodes = [{ "start": "00:00:05.1", "end": "00:00:25.1", "hook": ""}]
+            # shorts_timecodes = [{ "start": "02:30:54.1", "end": "02:31:18.1", "hook": ""}]
             shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
         except ValueError as e:
             logger.error(f"Не удалось получить хайлайты от GPT: {e}")

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def get_video_duration(url: str) -> Optional[float]:
     """
-    Retrieves the duration of a video in seconds using yt-dlp.
+    Retrieves the duration of a video in seconds using yt-dlp, with an ffprobe fallback.
     """
     try:
         cleaned_url = url.split('?')[0]
@@ -48,8 +48,46 @@ def get_video_duration(url: str) -> Optional[float]:
                             if duration:
                                 logger.info(f"Found duration for Twitch VOD in 'chapters' list: {duration}")
                     except (IndexError, TypeError):
-                        pass # Ignore if chapters list is empty or not structured as expected
+                        pass
             
+            if duration is None:
+                entries = info_dict.get('entries')
+                if entries and isinstance(entries, list):
+                    try:
+                        first_entry = entries[0]
+                        if first_entry and isinstance(first_entry, dict):
+                            duration = first_entry.get('duration')
+                            if duration:
+                                logger.info(f"Found duration for Twitch VOD in 'entries' list: {duration}")
+                    except (IndexError, TypeError):
+                        pass
+
+            # If duration is still not found, try ffprobe
+            if duration is None:
+                logger.info("yt-dlp failed to find duration, trying ffprobe as a fallback.")
+                stream_url = info_dict.get('url') # Get top-level url first
+                if not stream_url and 'formats' in info_dict and info_dict['formats']:
+                    stream_url = info_dict['formats'][-1].get('url') # Fallback to last format's url
+
+                if stream_url:
+                    try:
+                        cmd = [
+                            "ffprobe",
+                            "-v", "error",
+                            "-show_entries", "format=duration",
+                            "-of", "default=noprint_wrappers=1:nokey=1",
+                            stream_url
+                        ]
+                        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=60)
+                        duration_str = result.stdout.strip()
+                        if duration_str and duration_str != 'N/A':
+                            duration = float(duration_str)
+                            logger.info(f"ffprobe successfully found duration: {duration}")
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+                        logger.error(f"ffprobe failed to get duration: {e}")
+                    except Exception as e:
+                        logger.error(f"An unexpected error occurred with ffprobe: {e}")
+
             if duration is None:
                 logger.warning(f"Could not find 'duration' in any known location for {cleaned_url}.")
 
@@ -93,20 +131,41 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
                 return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
     
     elif platform == 'twitch':
-        is_available_yt_dlp, message_yt_dlp, err_yt_dlp = _check_video_availability_yt_dlp(url, lang)
-        if not is_available_yt_dlp:
-            return False, message_yt_dlp, err_yt_dlp
-        
-        # Check if we can get the duration for Twitch videos
         try:
-            duration = get_video_duration(url)
-            if duration is None:
-                logger.warning(f"Could not get duration for Twitch video: {url}")
-                return False, get_translation(lang, "video_unavailable_check_link"), "twitch_video_no_duration"
+            cleaned_url = url.split('?')[0]
+            ydl_opts = {
+                'quiet': True,
+                'skip_download': True,
+                'simulate': True,
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+                }
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(cleaned_url, download=False)
+
+            title = info_dict.get('title')
+            if not title:
+                entries = info_dict.get('entries')
+                if entries and isinstance(entries, list) and isinstance(entries[0], dict):
+                    title = entries[0].get('title')
+            
+            if not title:
+                return False, get_translation(lang, "unavailable_video_error"), "yt-dlp found no title"
+
+        except yt_dlp.utils.DownloadError as e:
+            error_message = str(e).lower()
+            if "age restricted" in error_message:
+                return False, get_translation(lang, "age_restricted_error"), "age restricted"
+            if "private" in error_message:
+                return False, get_translation(lang, "private_video_error"), "private"
+            if "unavailable" in error_message:
+                return False, get_translation(lang, "unavailable_video_error"), error_message[:400]
+            return False, get_translation(lang, "video_unavailable_check_link"), error_message
         except Exception as e:
-            logger.error(f"Error getting duration for Twitch video {url}: {e}")
+            logger.error(f"Error checking twitch video availability {url}: {e}")
             return False, get_translation(lang, "video_unavailable_check_link"), str(e)
-    
+
     else:
         return False, "Unsupported video platform", "unsupported_platform"
 

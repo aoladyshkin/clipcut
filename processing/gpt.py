@@ -5,8 +5,10 @@ import re
 import json
 import time
 import logging
+import random
+import math
 from openai import OpenAI
-from config import OPENAI_API_KEY, MAX_SHORTS_PER_VIDEO
+from config import OPENAI_API_KEY, MAX_SHORTS_PER_VIDEO, MIN_SHORT_DURATION, MAX_SHORT_DURATION
 from utils import format_seconds_to_hhmmss
 
 client = OpenAI(api_key=OPENAI_API_KEY)
@@ -74,54 +76,76 @@ def _parse_captions(captions_path: str):
         
     return segments
 
-def gpt_fallback_prompt(shorts_number, max_duration):
-    prompt = f'''
-Ты — аварийный генератор таймкодов для видео. Основной AI не справился с задачей.
-Твоя задача — нарезать видео на случайные, но правдоподобные фрагменты (шортсов).
-'''
-    if shorts_number != 'auto':
-        prompt += f"Сгенерируй ровно {shorts_number} шортсов.\n\n"
+def generate_random_shorts(audio_duration: float, shorts_number: any = 'auto') -> list:
+    """
+    Генерирует случайные, непересекающиеся таймкоды для шортсов.
+    """
+    logger.info("Генерирую случайные шортсы в качестве фолбэка.")
+    
+    # Определяем количество шортсов
+    if shorts_number == 'auto':
+        num_shorts_to_generate = random.randint(MAX_SHORTS_PER_VIDEO // 2, MAX_SHORTS_PER_VIDEO)
     else:
-        prompt += f"Выбери до {MAX_SHORTS_PER_VIDEO} таких фрагментов. Оптимально ~{MAX_SHORTS_PER_VIDEO//2} шт.\n\n"
-    prompt += f'''
-Длительность всего видео: {max_duration} секунд.
+        num_shorts_to_generate = int(shorts_number)
 
-Правила:
-1.  Каждый шортс должен длиться от 30 до 60 секунд.
-2.  Шортсы не должны пересекаться.
-3.  Выдай СТРОГО JSON-массив таймкодов.
+    # Убедимся, что минимальное количество шортсов не превышает максимально возможное
+    max_possible_shorts = math.floor(audio_duration / MIN_SHORT_DURATION)
+    num_shorts_to_generate = min(num_shorts_to_generate, max_possible_shorts)
 
-Пример ответа:
-[
-  {{"start": "123.5", "end": "161.0"}},
-  {{"start": "315.2", "end": "347.8"}}
-]
-'''
-    return prompt
+    if num_shorts_to_generate <= 0:
+        logger.warning("Невозможно сгенерировать шортсы: недостаточно длины видео или некорректное количество.")
+        return []
+
+    generated_shorts = []
+    attempts = 0
+    max_attempts_per_short = 100 
+
+    while len(generated_shorts) < num_shorts_to_generate and attempts < num_shorts_to_generate * max_attempts_per_short:
+        # Случайная длительность шортса
+        current_short_duration = random.uniform(MIN_SHORT_DURATION, MAX_SHORT_DURATION)
+        
+        # Случайное начало шортса
+        max_start_time = audio_duration - current_short_duration
+        if max_start_time < 0:
+            attempts += 1
+            continue # Невозможно разместить шортс такой длины
+
+        start_time = random.uniform(0, max_start_time)
+        end_time = start_time + current_short_duration
+
+        # Проверяем на пересечения с уже сгенерированными шортсами
+        is_overlapping = False
+        for existing_short in generated_shorts:
+            # Небольшой отступ, чтобы избежать наложения из-за float-точности
+            if not (end_time + 1 <= existing_short['start'] or start_time >= existing_short['end'] + 1):
+                is_overlapping = True
+                break
+        
+        if not is_overlapping:
+            generated_shorts.append({'start': round(start_time, 2), 'end': round(end_time, 2), 'hook': ""})
+        else:
+            attempts += 1
+            
+    if len(generated_shorts) < num_shorts_to_generate:
+        logger.warning(f"Сгенерировано только {len(generated_shorts)} из {num_shorts_to_generate} запрошенных шортсов после {attempts} попыток.")
+
+    # Сортируем по времени начала
+    generated_shorts.sort(key=lambda x: x['start'])
+    return generated_shorts
+
 
 def get_random_highlights_from_gpt(shorts_number, audio_duration):
     """
     Запасной вариант: если GPT не вернул JSON, генерируем случайные таймкоды.
     """
     logger.info("Запускаю фолбэк-механизм для генерации случайных шортсов.")
-    prompt = gpt_fallback_prompt(shorts_number, audio_duration)
-    
     try:
-        resp = client.responses.create(
-            model="gpt-5-nano", # Используем более быструю и дешевую модель для фолбэка
-            input=[{"role": "user", "content": prompt}],
-        )
-        raw = _response_text(resp)
-        json_str = _extract_json_array(raw)
-        data = json.loads(json_str)
-        
-        # Добавляем пустой hook, чтобы структура данных была одинаковой
-        for item in data:
-            item['hook'] = "" 
-            
+        data = generate_random_shorts(audio_duration, shorts_number)
+        if not data:
+            raise ValueError("Не удалось сгенерировать случайные шортсы.")
         return data
     except Exception as e:
-        logger.error(f"Фолбэк-механизм также не удался: {e}")
+        logger.error(f"Фолбэк-механизм генерации случайных шортсов не удался: {e}")
         return None
 
 def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):

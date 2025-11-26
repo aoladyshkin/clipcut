@@ -252,7 +252,7 @@ def clear_database():
     """
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM users")
+        cursor.execute("DELETE FROM processing_queue")
         conn.commit()
 
 # Убедимся, что база данных инициализируется при запуске

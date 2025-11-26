@@ -6,10 +6,10 @@ RUB_TO_STARS_RATE = 100/180  # 100 Stars = 180 RUB
 
 PACKAGES = [
     {"generations": 1, "rub": 149, "discount_rub": 99, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
-    {"generations": 5, "rub": 649, "discount_rub": 449, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
-    {"generations": 10, "rub": 999, "discount_rub": 749, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": True},
-    {"generations": 25, "rub": 1990, "discount_rub": 1449, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
-    {"generations": 50, "rub": 2590, "discount_rub": 1999, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
+    {"generations": 5, "rub": 449, "discount_rub": 349, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
+    {"generations": 10, "rub": 799, "discount_rub": 549, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": True},
+    {"generations": 25, "rub": 1790, "discount_rub": 1049, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
+    {"generations": 50, "rub": 2590, "discount_rub": 1899, "rub_per_generation": 0, "discount_rub_per_generation": 0, "highlight": False},
 ]
 
 def get_package_prices(discount_active: bool = False, referral_discount_active: bool = False) -> list:

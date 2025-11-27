@@ -2,6 +2,9 @@
 
 import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from queue import Queue
+
 
 from pathlib import Path
 import logging
@@ -84,17 +87,26 @@ def get_highlights(out_dir: Path, audio_path: Path, shorts_number: any, video_du
     return shorts_timecodes
 
 def create_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback):
-    futures = process_video_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
+    render_futures = process_video_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
     
     successful_sends = 0
-    if futures:
-        for future in futures:
+    if render_futures:
+        for render_future in render_futures:
             try:
-                success = future.result() # this will block
-                if success:
-                    successful_sends += 1
+                # Первый .result() ожидает завершения задачи _render_clip_from_segment.
+                # Он возвращает future, созданный run_coroutine_threadsafe.
+                send_future = render_future.result()
+                
+                if send_future:
+                    # Второй .result() ожидает завершения корутины send_video.
+                    # Это блокирующий вызов, который исправляет состояние гонки.
+                    # Добавлен таймаут, чтобы избежать вечного зависания.
+                    success = send_future.result(timeout=600) 
+                    if success:
+                        successful_sends += 1
             except Exception as e:
-                print(f"A future failed when sending video: {e}")
+                logger.error(f"Future для отправки видео завершился с ошибкой: {e}", exc_info=True)
+
     return successful_sends
 
 def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False):
@@ -122,8 +134,14 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         
         try:
             video_duration = get_video_duration(url)
-            # shorts_timecodes = [{ "start": "02:30:54.1", "end": "02:31:18.1", "hook": ""}]
+            # shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": "", "virality_score": 5},
+            #     { "start": "00:01:04.1", "end": "00:02:18.1", "hook": "", "virality_score": 5},
+            #     { "start": "00:02:04.1", "end": "00:03:18.1", "hook": "", "virality_score": 5}]
             shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
+            
+            if shorts_timecodes:
+                shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
+
         except ValueError as e:
             logger.error(f"Не удалось получить хайлайты от GPT: {e}")
             if status_callback:
@@ -180,8 +198,12 @@ def handle_random_clips_workflow(url, config, out_dir, status_callback, send_vid
             shorts_timecodes.append({
                 "start": format_seconds_to_hhmmss(float(it["start"])),
                 "end":   format_seconds_to_hhmmss(float(it["end"])),
-                "hook":  it["hook"]
+                "hook":  it["hook"],
+                "virality_score": it.get("virality_score", 5)
             })
+
+        # Sort by virality score
+        shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
 
     except Exception as e:
         logger.error(f"Не удалось получить случайные хайлайты от GPT: {e}")
@@ -198,25 +220,19 @@ def handle_random_clips_workflow(url, config, out_dir, status_callback, send_vid
     if status_callback:
         status_callback(get_translation(lang, "clips_found").format(shorts_timecodes_len=len(shorts_timecodes), num_to_process=num_to_process))
 
-    successful_sends = 0
-    futures = []
-    for i, short in enumerate(shorts_timecodes, 1):
-        try:
-            future = create_single_clip(
-                config=config,
-                url=url,
-                short_info=short,
-                clip_num=i,
-                out_dir=out_dir,
-                audio_path=None, 
-                full_transcript_segments=None,
-                send_video_callback=send_video_callback
-            )
-            if future:
-                futures.append(future)
-        except Exception as e:
-            logger.error(f"Ошибка при создании клипа #{i}: {e}", exc_info=True)
+    # The new orchestrator function handles the rest
+    futures = orchestrate_clip_creation(
+        config=config,
+        url=url,
+        shorts_timecodes=shorts_timecodes,
+        out_dir=out_dir,
+        send_video_callback=send_video_callback,
+        audio_path=None,
+        full_transcript_segments=None,
+        status_callback=status_callback
+    )
 
+    successful_sends = 0
     for future in futures:
         try:
             if future.result():
@@ -226,48 +242,33 @@ def handle_random_clips_workflow(url, config, out_dir, status_callback, send_vid
 
     return successful_sends, 0
 
-
 def main_twitch(url, config, out_dir, status_callback, send_video_callback):
     """Entry point for the Twitch workflow."""
     return handle_random_clips_workflow(url, config, out_dir, status_callback, send_video_callback)
 
 
-def create_single_clip(config, url, short_info, clip_num, out_dir, audio_path, full_transcript_segments, send_video_callback):
+def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, out_dir, audio_path, full_transcript_segments, send_video_callback):
     """
-    Handles the creation of a single video clip from download to rendering.
-    This function is designed to be generic for both YouTube and Twitch.
+    Handles the rendering of a single video clip from an already downloaded segment.
     """
     final_width = 720
     final_height = 1280
-    
     start_cut = to_seconds(short_info["start"])
     end_cut = to_seconds(short_info["end"])
-    
-    segment_video_path = out_dir / f"segment_{clip_num}.mp4"
-
-    try:
-        download_video_segment(url, segment_video_path, start_cut, end_cut)
-    except Exception as e:
-        print(f"Не удалось скачать сегмент {clip_num} ({start_cut}-{end_cut}): {e}")
-        return None
 
     main_clip_raw = VideoFileClip(str(segment_video_path))
     
     subtitles_type = config.get('subtitles_type', 'word-by-word')
     
-    # For Twitch, full_transcript_segments will be None. We generate it per clip.
-    # For YouTube, it's passed in.
     current_transcript_segments = full_transcript_segments
     
-    # --- Subtitle Generation ---
     ass_path = None
     if subtitles_type != 'no_subtitles':
         faster_whisper_model = get_whisper_model()
         
-        # If no transcript is provided (Twitch case), generate it now from the segment
         if current_transcript_segments is None:
             segments, _ = get_transcript_segments_and_file(
-                url=None, # Not needed as we provide audio_path
+                url=None, 
                 out_dir=out_dir,
                 audio_path=segment_video_path,
                 force_whisper=True,
@@ -286,9 +287,7 @@ def create_single_clip(config, url, short_info, clip_num, out_dir, audio_path, f
                 if seg['start'] > end_cut:
                     break
         
-        # For word-by-word on YouTube, we need the full audio. For Twitch, we use the segment audio.
         audio_for_subtitles = segment_video_path if audio_path is None else audio_path
-
         subtitle_items = get_subtitle_items(
             subtitles_type, current_transcript_segments, audio_for_subtitles, start_cut, end_cut, 
             faster_whisper_model)
@@ -352,27 +351,91 @@ def create_single_clip(config, url, short_info, clip_num, out_dir, audio_path, f
     print(f"✅ Создан файл {output_sub}")
     
     if send_video_callback:
-        return send_video_callback(file_path=output_sub, hook=short_info["hook"], start=short_info["start"], end=short_info["end"])
+        virality_score = short_info.get("virality_score", None) # Get score, default to None
+        return send_video_callback(file_path=output_sub, hook=short_info["hook"], start=short_info["start"], end=short_info["end"], virality_score=virality_score)
     return None
+
+def orchestrate_clip_creation(config, url, shorts_timecodes, out_dir, send_video_callback, audio_path=None, full_transcript_segments=None, status_callback=None):
+    """
+    Orchestrates the creation of video clips using a producer-consumer pattern.
+    Downloads segments sequentially while rendering them sequentially, but overlapping the two phases.
+    """
+    render_futures = []       # Futures for the rendering tasks
+    
+    # 1. Define the downloader worker function
+    def _download_worker_task(clip_num, short_info):
+        start_cut = to_seconds(short_info["start"])
+        end_cut = to_seconds(short_info["end"])
+        segment_video_path = out_dir / f"segment_{clip_num}.mp4"
+        try:
+            print(f"Downloading segment {clip_num} ({short_info['start']}-{short_info['end']})...")
+            download_video_segment(url, segment_video_path, start_cut, end_cut)
+            return clip_num, segment_video_path, short_info
+        except Exception as e:
+            logger.error(f"Failed to download segment {clip_num} ({start_cut}-{end_cut}): {e}", exc_info=True)
+            return clip_num, None, short_info
+
+    # 2. Start the downloader in a single-worker executor
+    download_executor = ThreadPoolExecutor(max_workers=1)
+    # Submit all download tasks to the downloader executor.
+    # They will be executed sequentially by this executor.
+    download_submission_futures = [
+        download_executor.submit(_download_worker_task, i + 1, short)
+        for i, short in enumerate(shorts_timecodes)
+    ]
+
+    # 3. Start the renderer in a single-worker executor
+    render_executor = ThreadPoolExecutor(max_workers=1)
+
+    download_count = 0
+    total_downloads = len(shorts_timecodes)
+
+    # 4. As downloads complete, feed them to the renderer
+    for future in as_completed(download_submission_futures):
+        clip_num, segment_path, short_info = future.result()
+        if segment_path:
+            download_count += 1
+            print(f"Finished downloading segment {clip_num}. {download_count}/{total_downloads} downloaded.")
+            if status_callback:
+                lang = config.get('lang', 'ru')
+                status_callback(get_translation(lang, "downloading_clips").format(current=download_count, total=total_downloads))
+            
+            # Submit rendering task for this downloaded segment
+            print(f"Submitting clip #{clip_num} for rendering...")
+            render_future = render_executor.submit(
+                _render_clip_from_segment,
+                config=config,
+                segment_video_path=segment_path,
+                short_info=short_info,
+                clip_num=clip_num,
+                out_dir=out_dir,
+                audio_path=audio_path,
+                full_transcript_segments=full_transcript_segments,
+                send_video_callback=send_video_callback
+            )
+            render_futures.append(render_future)
+        else:
+            print(f"Skipping rendering for clip #{clip_num} due to failed download.")
+            logger.warning(f"Clip #{clip_num} download failed, skipping rendering.")
+
+    # Shut down executors
+    download_executor.shutdown(wait=True)
+    render_executor.shutdown(wait=True)
+    
+    # Return futures for the send_video_callback results
+    return render_futures
 
 
 def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None):
-    futures = []
-    for i, short in enumerate(shorts_timecodes, 1):
-        future = create_single_clip(
-            config=config,
-            url=url,
-            short_info=short,
-            clip_num=i,
-            out_dir=out_dir,
-            audio_path=audio_path,
-            full_transcript_segments=transcript_segments,
-            send_video_callback=send_video_callback
-        )
-        if future:
-            futures.append(future)
-    return futures
-
+    return orchestrate_clip_creation(
+        config=config,
+        url=url,
+        shorts_timecodes=shorts_timecodes,
+        out_dir=out_dir,
+        send_video_callback=send_video_callback,
+        audio_path=audio_path,
+        full_transcript_segments=transcript_segments
+    )
 
 if __name__ == "__main__":
     url = "https://youtu.be/4_3VXLK_K_A?si=GVZ3IySlOPK09Ohc"

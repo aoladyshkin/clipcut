@@ -515,7 +515,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # First, check for zero balance
     if balance <= 0:
-        if REQUIRED_CHANNELS and not get_has_subscribed_for_reward(user_id):
+        if REWARD_FOR_SUBSCRIPTION > 0 and REQUIRED_CHANNELS and not get_has_subscribed_for_reward(user_id):
             channels_list = "\n".join([f"• {channel}" for channel in REQUIRED_CHANNELS])
             keyboard = [
                 [InlineKeyboardButton(get_translation(lang, "check_subscription_button"), callback_data='check_subscription_reward')],
@@ -523,7 +523,7 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(
-                get_translation(lang, "out_of_generations_with_reward").format(channels=channels_list),
+                get_translation(lang, "out_of_generations_with_reward").format(channels=channels_list, reward=REWARD_FOR_SUBSCRIPTION),
                 reply_markup=reply_markup,
                 parse_mode="HTML"
             )

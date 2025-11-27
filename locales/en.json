@@ -154,6 +154,7 @@
     "your_tasks_in_queue": "<b>Your tasks in the queue:</b>",
     "task_status_item": "<b>Position:</b> {position}\n<b>URL:</b> {url}",
     "max_shorts_exceeded": "You cannot create more than {max_shorts} shorts at a time.",
+    "in_progress_status": "in process",
     "insufficient_balance_for_queue": "You have a balance of {balance} gen, with {queued_tasks} tasks already in the queue. Not enough funds to add another one.",
     "referrer_reward_notification": "🎉 A user you referred has made their first purchase! You have been awarded {reward} generations.",
     "out_of_generations_with_reward": "You are out of generations. You can get {reward} free generation for subscribing to the following channels:\n{channels}",

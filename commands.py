@@ -642,9 +642,13 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     response_messages = [get_translation(lang, "your_tasks_in_queue")]
     for task in user_tasks:
+        position_display = task['position']
+        if position_display == 0:
+            position_display = get_translation(lang, "in_progress_status")
+
         response_messages.append(
             "\n" + get_translation(lang, "task_status_item").format(
-                position=task['position'],
+                position=position_display,
                 url=task['url']
                 # generation_id=task['generation_id']
             )

@@ -1,4 +1,6 @@
 from localization import get_translation
+from config import REQUIRED_CHANNELS
+from telegram import Bot
 
 def pluralize(n, forms):
     """
@@ -49,6 +51,27 @@ def format_config(config, balance=None, is_demo=False, lang='ru'):
     settings_text += f"\n{balance_text}" if balance_text else ""
 
     return settings_text
+
+async def check_subscription_status(bot: Bot, user_id: int) -> bool:
+    """
+    Checks if the user is subscribed to all required channels.
+    """
+    if not REQUIRED_CHANNELS:
+        return True  # No channels are required, so consider subscribed
+
+    for channel_username in REQUIRED_CHANNELS:
+        if not channel_username:
+            continue
+        try:
+            chat_member = await bot.get_chat_member(chat_id=channel_username, user_id=user_id)
+            if chat_member.status not in ["member", "administrator", "creator"]:
+                return False
+        except Exception as e:
+            # Handle cases where the bot might not be an administrator in the channel
+            # Or the channel username is invalid
+            print(f"Error checking subscription for channel {channel_username}: {e}")
+            return False # Assuming if there's an error, the user is not subscribed
+    return True
 
 def format_seconds_to_hhmmss(seconds):
     seconds = float(seconds)

@@ -155,5 +155,10 @@
     "task_status_item": "<b>Position:</b> {position}\n<b>URL:</b> {url}",
     "max_shorts_exceeded": "You cannot create more than {max_shorts} shorts at a time.",
     "insufficient_balance_for_queue": "You have a balance of {balance} gen, with {queued_tasks} tasks already in the queue. Not enough funds to add another one.",
-    "referrer_reward_notification": "🎉 A user you referred has made their first purchase! You have been awarded {reward} generations."
+    "referrer_reward_notification": "🎉 A user you referred has made their first purchase! You have been awarded {reward} generations.",
+    "out_of_generations_with_reward": "You are out of generations. You can get 1 free generation for subscribing to the following channels:\n{channels}",
+    "check_subscription_button": "Check subscription",
+    "subscription_reward_granted_try_again": "You have received {reward} free generation. Please try again.",
+    "still_not_subscribed_short": "You are not subscribed to all channels. Please subscribe and try again.",
+    "still_not_subscribed_long": "You are still not subscribed to all channels. Please subscribe to the following channels and try again:\n{channels}"
 }

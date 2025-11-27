@@ -11,10 +11,12 @@ MODERATORS_GROUP_ID = os.environ.get("MODERATORS_GROUP_ID")
 ADMIN_USER_TAG = os.environ.get("ADMIN_USER_TAG", "@aoladyshkin")
 MODERATORS_USER_TAGS = os.environ.get("MODERATORS_USER_TAGS", "")
 ADMIN_USER_IDS = [id.strip() for id in os.environ.get("ADMIN_USER_IDS", "").split(',')]
+REQUIRED_CHANNELS = [channel.strip() for channel in os.environ.get("REQUIRED_CHANNELS", "").split(',') if channel.strip()]
 FEEDBACK_GROUP_ID = os.environ.get("FEEDBACK_GROUP_ID")
 FORWARD_RESULTS_GROUP_ID = os.environ.get("FORWARD_RESULTS_GROUP_ID")
 MAX_CONCURRENT_TASKS = int(os.environ.get("MAX_CONCURRENT_TASKS", "1"))
 REWARD_FOR_FEEDBACK = int(os.environ.get("REWARD_FOR_FEEDBACK", 1))
+REWARD_FOR_SUBSCRIPTION = int(os.environ.get("REWARD_FOR_SUBSCRIPTION", 1))
 START_BALANCE = int(os.environ.get("START_BALANCE", 1))
 REFERRER_REWARD = int(os.environ.get("REFERRER_REWARD", 1))
 

@@ -1,6 +1,7 @@
 import logging
 import uuid
 import json
+import re
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
@@ -43,7 +44,13 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _, _, _, lang, _ = get_user(user_id)
     context.user_data['lang'] = lang
 
-    url = update.message.text
+    url_match = re.search(r'https?:\/\/(www\.)?(youtube\.com|youtu\.be|twitch\.tv)\S+', update.message.text)
+    if not url_match:
+        await update.message.reply_text(get_translation(lang, "send_correct_youtube_link")) # TODO: Update translation for Twitch
+        return GET_URL
+    
+    url = url_match.group(0)
+
     generation_id = str(uuid.uuid4())
     context.user_data['generation_id'] = generation_id
     platform = get_video_platform(url)

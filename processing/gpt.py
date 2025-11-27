@@ -16,10 +16,15 @@ logger = logging.getLogger(__name__)
 
 VECTOR_STORE_NAME = "ShortsFactory Main Store"
 
-def gpt_gpt_prompt(shorts_number):
-    prompt = ( '''
+def gpt_gpt_prompt(shorts_number, video_duration_seconds=None):
+    duration_str = ""
+    if video_duration_seconds:
+        duration_str = format_seconds_to_hhmmss(video_duration_seconds)
+
+    prompt = (f'''
 Ты — профессиональный редактор коротких видео, работающий на фабрике контента для TikTok, YouTube Shorts и Instagram Reels.
 Твоя задача — из транскрипта длинного видео (шоу, интервью, подкаст, стрим) выбрать максимально виральные, эмоциональные и самодостаточные фрагменты, которые могут набрать миллионы просмотров.
+{'Видео длится ' + duration_str if duration_str else ''}
 ''')
     
     if shorts_number != 'auto':
@@ -150,40 +155,33 @@ def get_random_highlights_from_gpt(shorts_number, audio_duration):
 
 def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration: float = 600.0, shorts_number: any = 'auto'):
     """
-    Использует постоянное векторное хранилище, автоматически находя его или создавая.
+    Creates a temporary vector store for each request to ensure isolation.
     """
-    prompt = gpt_gpt_prompt(shorts_number)
+    prompt = gpt_gpt_prompt(shorts_number, audio_duration)
     data = None
     is_fallback = False
     vs = None
     uploaded_file = None
 
     try:
-        # 1) Ищем существующее хранилище или создаем новое
-        vector_stores = client.vector_stores.list()
-        for store in vector_stores.data:
-            if store.name == VECTOR_STORE_NAME:
-                vs = store
-                logger.info(f"Использую существующее хранилище: {vs.id}")
-                break
-        
-        if not vs:
-            logger.info(f"Создаю новое постоянное хранилище '{VECTOR_STORE_NAME}'...")
-            vs = client.vector_stores.create(name=VECTOR_STORE_NAME)
+        # 1) Создаем временное векторное хранилище для изоляции
+        logger.info("Создаю временное векторное хранилище...")
+        vs = client.vector_stores.create(name=f"Temp Store - {time.time()}")
 
-        # 2) Загружаем файл и прикрепляем к постоянному Vector Store
+        # 2) Загружаем файл и прикрепляем к временному хранилищу
         with open(captions_path, "rb") as f:
             uploaded_file = client.files.create(file=f, purpose="assistants")
-
+        
         client.vector_stores.files.create(
             vector_store_id=vs.id,
-            file_id=uploaded_file.id,
+            file_id=uploaded_file.id
         )
 
         # 3) Ждём, пока файл будет готов к использованию
         _wait_for_file_indexing(vs.id, uploaded_file.id)
 
-        # 4) Вызываем ассистента
+        # 4) Вызываем ассистента с этим временным хранилищем
+        logger.info(f"Вызываю ассистента с временным хранилищем {vs.id}...")
         resp = client.responses.create(
             model="gpt-5",
             input=[{"role": "user", "content": prompt}],
@@ -205,25 +203,26 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         if not caption_segments:
             raise ValueError("Не удалось спарсить субтитры для фолбэка.")
 
-        max_duration = 0
-        if caption_segments:
-            max_duration = max(seg['end'] for seg in caption_segments)
-
+        max_duration = audio_duration
         data = get_random_highlights_from_gpt(shorts_number, max_duration)
         if data is None:
             raise ValueError("Фолбэк-механизм также не смог сгенерировать таймкоды.")
         is_fallback = True
     
     finally:
-        # Удаляем только временный файл, а не все хранилище
-        if vs and uploaded_file:
+        # Очистка: удаляем временное хранилище и файл
+        if uploaded_file:
             try:
-                logger.info(f"Удаляю файл {uploaded_file.id} из хранилища {vs.id}...")
-                client.vector_stores.files.delete(vector_store_id=vs.id, file_id=uploaded_file.id)
-                logger.info(f"Удаляю файл {uploaded_file.id} из общего хранилища...")
                 client.files.delete(file_id=uploaded_file.id)
+                logger.info(f"Временный файл {uploaded_file.id} удален.")
             except Exception as delete_e:
-                logger.error(f"Ошибка при удалении файла {uploaded_file.id}: {delete_e}")
+                logger.error(f"Ошибка при удалении временного файла {uploaded_file.id}: {delete_e}")
+        if vs:
+            try:
+                client.vector_stores.delete(vector_store_id=vs.id)
+                logger.info(f"Временное хранилище {vs.id} удалено.")
+            except Exception as delete_e:
+                logger.error(f"Ошибка при удалении временного хранилища {vs.id}: {delete_e}")
 
     if data is None:
         raise ValueError("Не удалось получить данные от GPT ни одним из способов.")

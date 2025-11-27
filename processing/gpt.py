@@ -183,7 +183,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         # 4) Вызываем ассистента с этим временным хранилищем
         logger.info(f"Вызываю ассистента с временным хранилищем {vs.id}...")
         resp = client.responses.create(
-            model="gpt-5",
+            model="gpt-5-nano",
             input=[{"role": "user", "content": prompt}],
             tools=[
                 {

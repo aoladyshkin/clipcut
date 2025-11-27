@@ -63,7 +63,7 @@ def get_conv_handler():
             CommandHandler("start", start),
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND & 
-                (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/') | filters.Regex(r'twitch\.tv/')), 
+                (filters.Regex(r'https?:\/\/(www\.)?(youtube\.com|youtu\.be|twitch\.tv)\S+')), 
                 url_entrypoint
             ),
             CallbackQueryHandler(start_demo, pattern='^start_demo$'),

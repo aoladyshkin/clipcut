@@ -70,10 +70,10 @@ def transcribe_audio(url: str, out_dir: Path, lang: str):
     return transcript_segments, lang_code, None
 
 
-def get_highlights(out_dir: Path, audio_path: Path, shorts_number: any):
+def get_highlights(out_dir: Path, audio_path: Path, shorts_number: any, video_duration: float):
     print("Ищем смысловые куски через GPT...")
     # Используем get_audio_duration только если аудиофайл реально существует
-    duration = get_audio_duration(audio_path) if audio_path and audio_path.exists() else None
+    duration = video_duration if video_duration else (get_audio_duration(audio_path) if audio_path and audio_path.exists() else None)
     
     shorts_timecodes = get_highlights_from_gpt(out_dir / "captions.txt", duration, shorts_number=shorts_number)
     
@@ -121,8 +121,9 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         shorts_number = config.get('shorts_number', 'auto')
         
         try:
+            video_duration = get_video_duration(url)
             # shorts_timecodes = [{ "start": "02:30:54.1", "end": "02:31:18.1", "hook": ""}]
-            shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number)
+            shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
         except ValueError as e:
             logger.error(f"Не удалось получить хайлайты от GPT: {e}")
             if status_callback:

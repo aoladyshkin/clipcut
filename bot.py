@@ -189,11 +189,12 @@ async def run_processing(chat_id: int, user_data: dict, application: Application
     def status_callback(status_text: str):
         asyncio.run_coroutine_threadsafe(send_status_update(bot, chat_id, status_text, status_message_id, edit_message_id), main_loop)
 
-    def send_video_callback(file_path, hook, start, end):
+    def send_video_callback(file_path, hook, start, end, virality_score):
+        score_text = f" {virality_score}/10" if virality_score is not None else ""
         if hook: # Check if hook is not empty
-            caption = get_translation(lang, "video_caption").format(hook=hook, start=start[:-2], end=end[:-2])
+            caption = get_translation(lang, "video_caption").format(hook=hook, start=start[:-2], end=end[:-2], score=score_text)
         else:
-            caption = get_translation(lang, "video_caption_no_hook").format(start=start[:-2], end=end[:-2])
+            caption = get_translation(lang, "video_caption_no_hook").format(start=start[:-2], end=end[:-2], score=score_text)
         return asyncio.run_coroutine_threadsafe(
             send_video(
                 bot,

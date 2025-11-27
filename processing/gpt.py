@@ -54,9 +54,11 @@ def gpt_gpt_prompt(shorts_number, video_duration_seconds=None):
 Сжатость — зритель должен понять суть за первые 3 секунды ролика.
 
 Файл с транскриптом приложен. Формат строк в файле: `ss.s --> ss.s` + реплика.
+Для каждого фрагмента определи "оценку виральности" (virality_score) по шкале от 1 до 10, где 10 — это максимальный потенциал стать вирусным.
+
 Ответ — СТРОГО JSON-массив:
 
-[{"start":"120.5","end":"160.0","hook":"кликабельный заголовок"}]
+[{"start":"120.5","end":"160.0","hook":"кликабельный заголовок","virality_score":9}]
 
 В hook не используй начало транскрипта. Пиши готовый кликбейт-заголовок на том языке, на котором написана транскрипция.
 Убедись, что каждый клип дольше 20 секунд.
@@ -142,12 +144,19 @@ def generate_random_shorts(audio_duration: float, shorts_number: any = 'auto') -
 def get_random_highlights_from_gpt(shorts_number, audio_duration):
     """
     Запасной вариант: если GPT не вернул JSON, генерируем случайные таймкоды.
+    Также добавляем убывающую оценку виральности.
     """
     logger.info("Запускаю фолбэк-механизм для генерации случайных шортсов.")
     try:
         data = generate_random_shorts(audio_duration, shorts_number)
         if not data:
             raise ValueError("Не удалось сгенерировать случайные шортсы.")
+        
+        # Добавляем убывающий virality_score
+        num_shorts = len(data)
+        for i, short in enumerate(data):
+            short['virality_score'] = max(1, 10 - i)
+
         return data
     except Exception as e:
         logger.error(f"Фолбэк-механизм генерации случайных шортсов не удался: {e}")
@@ -263,7 +272,8 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         processed_data.append({
             "start": format_seconds_to_hhmmss(start_time),
             "end":   format_seconds_to_hhmmss(end_time),
-            "hook":  it["hook"]
+            "hook":  it["hook"],
+            "virality_score": it.get("virality_score", 5) # Извлекаем оценку, по умолчанию 5
         })
 
     return processed_data

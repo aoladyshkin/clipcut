@@ -87,17 +87,26 @@ def get_highlights(out_dir: Path, audio_path: Path, shorts_number: any, video_du
     return shorts_timecodes
 
 def create_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback):
-    futures = process_video_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
+    render_futures = process_video_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
     
     successful_sends = 0
-    if futures:
-        for future in futures:
+    if render_futures:
+        for render_future in render_futures:
             try:
-                success = future.result() # this will block
-                if success:
-                    successful_sends += 1
+                # Первый .result() ожидает завершения задачи _render_clip_from_segment.
+                # Он возвращает future, созданный run_coroutine_threadsafe.
+                send_future = render_future.result()
+                
+                if send_future:
+                    # Второй .result() ожидает завершения корутины send_video.
+                    # Это блокирующий вызов, который исправляет состояние гонки.
+                    # Добавлен таймаут, чтобы избежать вечного зависания.
+                    success = send_future.result(timeout=600) 
+                    if success:
+                        successful_sends += 1
             except Exception as e:
-                print(f"A future failed when sending video: {e}")
+                logger.error(f"Future для отправки видео завершился с ошибкой: {e}", exc_info=True)
+
     return successful_sends
 
 def main(url, config, status_callback=None, send_video_callback=None, deleteOutputAfterSending=False):
@@ -125,10 +134,14 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         
         try:
             video_duration = get_video_duration(url)
-            # shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": ""},
-            #     { "start": "00:01:04.1", "end": "00:02:18.1", "hook": ""},
-            #     { "start": "00:02:04.1", "end": "00:03:18.1", "hook": ""}]
+            # shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": "", "virality_score": 5},
+            #     { "start": "00:01:04.1", "end": "00:02:18.1", "hook": "", "virality_score": 5},
+            #     { "start": "00:02:04.1", "end": "00:03:18.1", "hook": "", "virality_score": 5}]
             shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
+            
+            if shorts_timecodes:
+                shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
+
         except ValueError as e:
             logger.error(f"Не удалось получить хайлайты от GPT: {e}")
             if status_callback:
@@ -185,8 +198,12 @@ def handle_random_clips_workflow(url, config, out_dir, status_callback, send_vid
             shorts_timecodes.append({
                 "start": format_seconds_to_hhmmss(float(it["start"])),
                 "end":   format_seconds_to_hhmmss(float(it["end"])),
-                "hook":  it["hook"]
+                "hook":  it["hook"],
+                "virality_score": it.get("virality_score", 5)
             })
+
+        # Sort by virality score
+        shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
 
     except Exception as e:
         logger.error(f"Не удалось получить случайные хайлайты от GPT: {e}")
@@ -334,7 +351,8 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
     print(f"✅ Создан файл {output_sub}")
     
     if send_video_callback:
-        return send_video_callback(file_path=output_sub, hook=short_info["hook"], start=short_info["start"], end=short_info["end"])
+        virality_score = short_info.get("virality_score", None) # Get score, default to None
+        return send_video_callback(file_path=output_sub, hook=short_info["hook"], start=short_info["start"], end=short_info["end"], virality_score=virality_score)
     return None
 
 def orchestrate_clip_creation(config, url, shorts_timecodes, out_dir, send_video_callback, audio_path=None, full_transcript_segments=None, status_callback=None):

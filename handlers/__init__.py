@@ -29,6 +29,7 @@ from .generation import (
     ask_for_banner,
     get_banner_choice,
     confirm_config,
+    handle_check_subscription_reward,
 )
 from .payment import (
     select_topup_package,
@@ -70,6 +71,7 @@ __all__ = [
     'ask_for_banner',
     'get_banner_choice',
     'confirm_config',
+    'handle_check_subscription_reward',
     'select_topup_package',
     'topup_yookassa',
     'get_yookassa_email',

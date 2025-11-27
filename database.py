@@ -56,6 +56,15 @@ def initialize_database():
             conn.commit()
             print("Database schema updated: added 'has_referral_discount' column to 'users' table.")
 
+        # Check if the has_subscribed_for_reward column exists, and add it if it doesn't
+        try:
+            cursor.execute("SELECT has_subscribed_for_reward FROM users LIMIT 1")
+        except sqlite3.OperationalError:
+            cursor.execute("ALTER TABLE users ADD COLUMN has_subscribed_for_reward BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
+            print("Database schema updated: added 'has_subscribed_for_reward' column to 'users' table.")
+
+
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS processing_queue (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -246,13 +255,31 @@ def get_user_referrer(user_id: int) -> Optional[int]:
         result = cursor.fetchone()
         return result[0] if result and result[0] else None
 
+def set_has_subscribed_for_reward(user_id: int, status: bool):
+    """Sets the subscription reward status for a user."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE users SET has_subscribed_for_reward = ? WHERE user_id = ?",
+            (status, user_id)
+        )
+        conn.commit()
+
+def get_has_subscribed_for_reward(user_id: int) -> bool:
+    """Checks if a user has already received the subscription reward."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT has_subscribed_for_reward FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        return result[0] == 1 if result else False
+
 def clear_database():
     """
     Удаляет все записи из таблицы users.
     """
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM users")
+        cursor.execute("DELETE FROM processing_queue")
         conn.commit()
 
 # Убедимся, что база данных инициализируется при запуске

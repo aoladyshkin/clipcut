@@ -28,6 +28,7 @@ from handlers import (
     start_demo,
     confirm_demo,
     get_brainrot,
+    handle_check_subscription_reward,
 ) 
 from states import (
     GET_URL,
@@ -104,6 +105,7 @@ def get_conv_handler():
                 CallbackQueryHandler(confirm_config, pattern='^confirm$'),
                 CallbackQueryHandler(confirm_demo, pattern='^confirm_demo$'),
                 CallbackQueryHandler(cancel_conversation, pattern='^cancel$'),
+                CallbackQueryHandler(handle_check_subscription_reward, pattern='^check_subscription_reward$')
             ],
             PROCESSING: [
                 CallbackQueryHandler(handle_rating, pattern='^rate_')

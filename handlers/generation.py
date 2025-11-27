@@ -4,7 +4,7 @@ import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 
-from database import get_user, get_user_tasks_from_queue, add_task_to_queue, get_total_queue_length
+from database import get_user, get_user_tasks_from_queue, add_task_to_queue, get_total_queue_length, get_has_subscribed_for_reward, set_has_subscribed_for_reward, add_to_user_balance
 from analytics import log_event
 from states import (
     GET_URL, GET_SHORTS_NUMBER, GET_LAYOUT, GET_SUBTITLES_TYPE, GET_SUBTITLE_STYLE, 
@@ -12,10 +12,10 @@ from states import (
 )
 from localization import get_translation
 from processing.download import check_video_availability
-from utils import format_config, get_video_platform
+from utils import format_config, get_video_platform, check_subscription_status
 from config import (
     CONFIG_EXAMPLES_DIR, ADMIN_USER_IDS, MODERATORS_GROUP_ID,
-    ADMIN_USER_TAG, MAX_SHORTS_PER_VIDEO
+    ADMIN_USER_TAG, MAX_SHORTS_PER_VIDEO, REQUIRED_CHANNELS, REWARD_FOR_SUBSCRIPTION
 )
 
 logger = logging.getLogger(__name__)
@@ -480,6 +480,32 @@ async def get_banner_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
     return CONFIRM_CONFIG
 
+async def handle_check_subscription_reward(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handles the 'check subscription' button click."""
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    _, _, _, lang, _ = get_user(user_id)
+
+    is_subscribed = await check_subscription_status(context.bot, user_id)
+    if is_subscribed:
+        set_has_subscribed_for_reward(user_id, True)
+        add_to_user_balance(user_id, REWARD_FOR_SUBSCRIPTION)
+        await query.edit_message_text(get_translation(lang, "subscription_reward_granted_try_again").format(reward=REWARD_FOR_SUBSCRIPTION))
+    else:
+        channels_list = "\n".join([f"• {channel}" for channel in REQUIRED_CHANNELS])
+        keyboard = [
+            [InlineKeyboardButton(get_translation(lang, "check_subscription_button"), callback_data='check_subscription_reward')],
+            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            get_translation(lang, "still_not_subscribed_long").format(channels=channels_list),
+            reply_markup=reply_markup,
+            parse_mode="HTML"
+        )
+    return CONFIRM_CONFIG
+
 async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Adds a task to the database queue after confirmation."""
     query = update.callback_query
@@ -489,14 +515,27 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # First, check for zero balance
     if balance <= 0:
-        topup_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
-        ])
-        await query.edit_message_text(
-            get_translation(lang, "out_of_generations"),
-            reply_markup=topup_keyboard
-        )
-        return ConversationHandler.END
+        if REQUIRED_CHANNELS and not get_has_subscribed_for_reward(user_id):
+            channels_list = "\n".join([f"• {channel}" for channel in REQUIRED_CHANNELS])
+            keyboard = [
+                [InlineKeyboardButton(get_translation(lang, "check_subscription_button"), callback_data='check_subscription_reward')],
+                [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                get_translation(lang, "out_of_generations_with_reward").format(channels=channels_list),
+                reply_markup=reply_markup,
+                parse_mode="HTML"
+            )
+        else:
+            topup_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton(get_translation(lang, "top_up_balance_button"), callback_data='topup_start')]
+            ])
+            await query.edit_message_text(
+                get_translation(lang, "out_of_generations"),
+                reply_markup=topup_keyboard
+            )
+        return CONFIRM_CONFIG
 
     # Then, check if the user has enough balance to queue another task
     queued_tasks_count = len(get_user_tasks_from_queue(user_id))

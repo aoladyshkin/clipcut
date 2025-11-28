@@ -66,6 +66,7 @@ def gpt_gpt_prompt(shorts_number, video_duration_seconds=None):
 
 В hook не используй начало транскрипта. Пиши готовый кликбейт-заголовок на том языке, на котором написана транскрипция.
 Убедись, что каждый клип дольше 20 секунд.
+МАССИВ НЕ МОЖЕТ БЫТЬ ПУСТЫМ.
 ВЫВОДИ ТОЛЬКО JSON. 
 НЕ ПИШИ ВНЕ JSON НИ ОДНОГО БУКВЕННОГО СИМВОЛА.
 ''')
@@ -211,6 +212,9 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         raw = _response_text(resp)
         json_str = _extract_json_array(raw)
         data = json.loads(json_str)
+
+        if not data or len(data) == 0:
+            raise ValueError("GPT вернул пустой JSON-массив. Запускаю фолбэк.")
 
     except (ValueError, TimeoutError) as e:
         logger.warning(f"Основной метод выбора хайлайтов не удался ({e.__class__.__name__}: {e}). Переключаюсь на фолбэк.")

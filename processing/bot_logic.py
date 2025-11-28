@@ -78,8 +78,33 @@ def get_highlights(out_dir: Path, audio_path: Path, shorts_number: any, video_du
     # Используем get_audio_duration только если аудиофайл реально существует
     duration = video_duration if video_duration else (get_audio_duration(audio_path) if audio_path and audio_path.exists() else None)
     
-    shorts_timecodes = get_highlights_from_gpt(out_dir / "captions.txt", duration, shorts_number=shorts_number)
-    
+    shorts_timecodes = []
+    try:
+        shorts_timecodes = get_highlights_from_gpt(out_dir / "captions.txt", duration, shorts_number=shorts_number)
+        if not shorts_timecodes:
+            # Вызываем ошибку, чтобы перейти в блок except и использовать fallback
+            raise ValueError("GPT не вернул таймкоды")
+    except Exception as e:
+        logger.warning("Не удалось получить хайлайты от GPT (%s), переход к случайной генерации.", e)
+        try:
+            shorts_timecodes_raw = get_random_highlights_from_gpt(shorts_number, duration)
+            if not shorts_timecodes_raw:
+                print("Не удалось сгенерировать случайные отрезки.")
+                return None
+            
+            # Конвертируем секунды в формат HH:MM:SS
+            for it in shorts_timecodes_raw:
+                shorts_timecodes.append({
+                    "start": format_seconds_to_hhmmss(float(it["start"])),
+                    "end":   format_seconds_to_hhmmss(float(it["end"])),
+                    "hook":  it["hook"],
+                    "virality_score": it.get("virality_score", 5)
+                })
+        except Exception as fallback_e:
+            print(f"Ошибка при генерации случайных отрезков: {fallback_e}")
+            logger.error("Не удалось сгенерировать случайные отрезки в качестве фолбэка: %s", fallback_e)
+            return None
+
     if not shorts_timecodes:
         print("GPT не смог выделить подходящие отрезки для шортсов.")
         return None
@@ -105,7 +130,7 @@ def create_clips(config, url, audio_only, shorts_to_process, transcript_segments
                     if success:
                         successful_sends += 1
             except Exception as e:
-                logger.error(f"Future для отправки видео завершился с ошибкой: {e}", exc_info=True)
+                logger.error("Future для отправки видео завершился с ошибкой: %s", e, exc_info=True)
 
     return successful_sends
 
@@ -143,7 +168,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
                 shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
 
         except ValueError as e:
-            logger.error(f"Не удалось получить хайлайты от GPT: {e}")
+            logger.error("Не удалось получить хайлайты от GPT: %s", e)
             if status_callback:
                 status_callback(get_translation(lang, "gpt_highlights_error"))
             return 0, 0

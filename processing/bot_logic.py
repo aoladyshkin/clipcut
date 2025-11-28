@@ -14,7 +14,8 @@ import contextlib
 import subprocess
 from moviepy.editor import (
     VideoFileClip,
-    CompositeVideoClip, ImageClip
+    CompositeVideoClip, ImageClip,
+    vfx, concatenate_videoclips
 )
 import json
 from faster_whisper import WhisperModel
@@ -159,10 +160,10 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         
         try:
             video_duration = get_video_duration(url)
-            # shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": "", "virality_score": 5},
-            #     { "start": "00:01:04.1", "end": "00:02:18.1", "hook": "", "virality_score": 5},
-            #     { "start": "00:02:04.1", "end": "00:03:18.1", "hook": "", "virality_score": 5}]
-            shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
+            shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": "", "virality_score": 5},
+                { "start": "00:01:04.1", "end": "00:02:18.1", "hook": "", "virality_score": 5},
+                { "start": "00:02:04.1", "end": "00:03:18.1", "hook": "", "virality_score": 5}]
+            # shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
             
             if shorts_timecodes:
                 shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
@@ -333,15 +334,28 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
         final_clip = video_canvas
 
     if config.get('add_banner'):
-        banner_path = 'banner.png'
-        if os.path.exists(banner_path):
-            banner_clip = (ImageClip(banner_path)
-                           .set_duration(final_clip.duration)
-                           .resize(width=final_clip.w * 0.5)
-                           .set_position(('center', final_clip.h * 0.1)))
-            final_clip = CompositeVideoClip([final_clip, banner_clip])
-        else:
-            logger.warning(f"Banner file not found at {banner_path}")
+        banner_type = config.get('add_banner')
+        if banner_type == 'shorts_factory_banner':
+            banner_path = 'banner.png'
+            if os.path.exists(banner_path):
+                banner_clip = (ImageClip(banner_path)
+                               .set_duration(final_clip.duration)
+                               .resize(width=final_clip.w * 0.5)
+                               .set_position(('center', final_clip.h * 0.1)))
+                final_clip = CompositeVideoClip([final_clip, banner_clip])
+            else:
+                logger.warning(f"Banner file not found at {banner_path}")
+        elif banner_type == 'getcourse_banner':
+            banner_path = 'getcourse_banner_encoded.mp4'
+            if os.path.exists(banner_path):
+                banner_video = VideoFileClip(banner_path).without_audio()
+                banner_video = banner_video.loop(duration=final_clip.duration)
+                banner_clip = (banner_video
+                               .resize(width=final_clip.w * 0.5) # Half width
+                               .set_position(('center', final_clip.h * 0.1))) # Centered horizontally, 10% from top
+                final_clip = CompositeVideoClip([final_clip, banner_clip])
+            else:
+                logger.warning(f"Banner file not found at {banner_path}")
 
     final_clip = final_clip.set_duration(main_clip_raw.duration)
     output_sub = out_dir / f"short{clip_num}.mp4"

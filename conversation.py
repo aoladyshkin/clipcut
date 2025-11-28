@@ -99,7 +99,7 @@ def get_conv_handler():
                 CallbackQueryHandler(get_subtitle_style, pattern='^(white|yellow|purple|green)$'),
             ],
             GET_BANNER: [
-                CallbackQueryHandler(get_banner_choice, pattern='^banner_(yes|no)$')
+                CallbackQueryHandler(get_banner_choice, pattern='^(shorts_factory_banner|getcourse_banner|no_banner)$')
             ],
             CONFIRM_CONFIG: [
                 CallbackQueryHandler(confirm_config, pattern='^confirm$'),

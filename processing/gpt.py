@@ -22,6 +22,10 @@ def gpt_gpt_prompt(shorts_number, video_duration_seconds=None):
         duration_str = format_seconds_to_hhmmss(video_duration_seconds)
 
     prompt = (f'''
+ТЫ РАБОТАЕШЬ В РЕЖИМЕ STRICT-JSON.
+ТЫ НЕ МОЖЕШЬ ГОВОРИТЬ, ОБЪЯСНЯТЬ, ЗАДАВАТЬ ВОПРОСЫ ИЛИ ПИСАТЬ ТЕКСТ ВНЕ JSON.
+ЕСЛИ ТЫ ВЫВЕДЕШЬ ХОТЬ ОДНО СЛОВО ВНЕ JSON — ЭТО ОШИБКА.
+ВЫВОДИ ТОЛЬКО JSON-МАССИВ.
 Ты — профессиональный редактор коротких видео, работающий на фабрике контента для TikTok, YouTube Shorts и Instagram Reels.
 Твоя задача — из транскрипта длинного видео (шоу, интервью, подкаст, стрим) выбрать максимально виральные, эмоциональные и самодостаточные фрагменты, которые могут набрать миллионы просмотров.
 {'Видео длится ' + duration_str if duration_str else ''}
@@ -62,6 +66,9 @@ def gpt_gpt_prompt(shorts_number, video_duration_seconds=None):
 
 В hook не используй начало транскрипта. Пиши готовый кликбейт-заголовок на том языке, на котором написана транскрипция.
 Убедись, что каждый клип дольше 20 секунд.
+МАССИВ НЕ МОЖЕТ БЫТЬ ПУСТЫМ.
+ВЫВОДИ ТОЛЬКО JSON. 
+НЕ ПИШИ ВНЕ JSON НИ ОДНОГО БУКВЕННОГО СИМВОЛА.
 ''')
     return prompt
 
@@ -205,6 +212,9 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
         raw = _response_text(resp)
         json_str = _extract_json_array(raw)
         data = json.loads(json_str)
+
+        if not data or len(data) == 0:
+            raise ValueError("GPT вернул пустой JSON-массив. Запускаю фолбэк.")
 
     except (ValueError, TimeoutError) as e:
         logger.warning(f"Основной метод выбора хайлайтов не удался ({e.__class__.__name__}: {e}). Переключаюсь на фолбэк.")

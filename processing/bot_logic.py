@@ -160,10 +160,10 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         
         try:
             video_duration = get_video_duration(url)
-            shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": "", "virality_score": 5},
-                { "start": "00:01:04.1", "end": "00:02:18.1", "hook": "", "virality_score": 5},
-                { "start": "00:02:04.1", "end": "00:03:18.1", "hook": "", "virality_score": 5}]
-            # shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
+            # shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": "", "virality_score": 5},
+            #     { "start": "00:01:04.1", "end": "00:02:18.1", "hook": "", "virality_score": 5},
+            #     { "start": "00:02:04.1", "end": "00:03:18.1", "hook": "", "virality_score": 5}]
+            shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
             
             if shorts_timecodes:
                 shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
@@ -340,7 +340,7 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
             if os.path.exists(banner_path):
                 banner_clip = (ImageClip(banner_path)
                                .set_duration(final_clip.duration)
-                               .resize(width=final_clip.w * 0.5)
+                               .resize(width=final_clip.w * 0.4)
                                .set_position(('center', final_clip.h * 0.1)))
                 final_clip = CompositeVideoClip([final_clip, banner_clip])
             else:

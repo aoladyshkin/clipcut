@@ -422,8 +422,11 @@ async def ask_for_banner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if str(user_id) in ADMIN_USER_IDS:
         keyboard = [
             [
-                InlineKeyboardButton(get_translation(lang, "yes"), callback_data='banner_yes'),
-                InlineKeyboardButton(get_translation(lang, "no"), callback_data='banner_no'),
+                InlineKeyboardButton("Shorts Factory", callback_data='shorts_factory_banner'),
+                InlineKeyboardButton("Get Course", callback_data='getcourse_banner'),
+            ],
+            [
+                InlineKeyboardButton(get_translation(lang, "no"), callback_data='no_banner'),
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -461,11 +464,18 @@ async def get_banner_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     user_id = query.from_user.id
     _, balance, _, lang, _ = get_user(user_id)
     context.user_data['lang'] = lang
-    choice = query.data == 'banner_yes'
-    context.user_data['config']['add_banner'] = choice
+    
+    choice = query.data
+    if choice == 'shorts_factory_banner':
+        context.user_data['config']['add_banner'] = 'shorts_factory_banner'
+    elif choice == 'getcourse_banner':
+        context.user_data['config']['add_banner'] = 'getcourse_banner'
+    elif choice == 'no_banner':
+        context.user_data['config']['add_banner'] = None
+    
     generation_id = context.user_data.get('generation_id')
     # log_event(query.from_user.id, 'config_step_banner_selected', {'choice': choice, 'generation_id': generation_id})
-    logger.info(f"Config for {query.from_user.id}: add_banner = {choice}")
+    logger.info(f"Config for {query.from_user.id}: add_banner = {context.user_data['config']['add_banner']}")
 
     settings_text = format_config(context.user_data['config'], balance, lang=lang)
 

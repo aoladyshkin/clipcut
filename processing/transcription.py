@@ -307,8 +307,8 @@ def transcribe_via_faster_whisper(audio_path) -> List[Dict[str, float]]:
         str(audio_path),
         task="transcribe",
         word_timestamps=False, # We only need phrase-level timestamps here
-        beam_size=5,
-        best_of=5,
+        beam_size=1,
+        best_of=1,
         temperature=0.0
     )
 

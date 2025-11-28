@@ -162,7 +162,7 @@ def get_random_highlights_from_gpt(shorts_number, audio_duration):
         # Добавляем убывающий virality_score
         num_shorts = len(data)
         for i, short in enumerate(data):
-            short['virality_score'] = max(1, 10 - i)
+            short['virality_score'] = random.randint(5, 10)
 
         return data
     except Exception as e:

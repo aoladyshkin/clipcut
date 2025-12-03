@@ -111,24 +111,10 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
 
     # 1. Check for video availability
     if platform == 'youtube':
-        try:
-            # First, try with pytubefix (often faster for basic checks)
-            yt = YouTube(url)
-            _ = yt.title
-            if not yt.streams:
-                return False, get_translation(lang, "no_streams_found"), "no streams"
-            
-            if not yt.captions:
-                return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
-
-        except Exception as e:
-            logger.warning(f"pytubefix failed: {e}. Falling back to yt-dlp.")
-            is_available_yt_dlp, message_yt_dlp, err_yt_dlp = _check_video_availability_yt_dlp(url, lang)
-            if not is_available_yt_dlp:
-                return False, message_yt_dlp, err_yt_dlp
-            
-            if not _check_subtitles_availability_yt_dlp(url):
-                return False, get_translation(lang, "subtitles_not_found"), "субтитры недоступны"
+        info_dict, message, err = _get_video_info_yt_dlp(url, lang)
+        
+        if not info_dict:
+            return False, message, err
     
     elif platform == 'twitch':
         try:
@@ -171,33 +157,10 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
 
     return True, get_translation(lang, "video_available"), "Video is available"
 
-def _check_subtitles_availability_yt_dlp(url: str) -> bool:
+def _get_video_info_yt_dlp(url: str, lang: str = 'ru') -> (Optional[dict], str, str):
     """
-    Checks if subtitles are available for a video using the yt-dlp API.
-    """
-    try:
-        cleaned_url = url.split('?')[0]
-        ydl_opts = {
-            'listsubtitles': True,
-            'quiet': True,
-            'skip_download': True,
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
-            }
-        }
-        if get_video_platform(cleaned_url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
-            ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(cleaned_url, download=False)
-            return bool(info_dict.get('subtitles') or info_dict.get('automatic_captions'))
-    except Exception as e:
-        logger.error(f"An unexpected error occurred while checking for subtitles with yt-dlp API: {e}")
-        return False
-
-def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, str):
-    """
-    Checks video availability using the yt-dlp API.
+    Retrieves video info using the yt-dlp API.
+    Returns (info_dict, message, error_log)
     """
     try:
         cleaned_url = url.split('?')[0]
@@ -205,6 +168,7 @@ def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, 
             'quiet': True,
             'skip_download': True,
             'simulate': True,
+            'listsubtitles': True,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
             }
@@ -215,20 +179,21 @@ def _check_video_availability_yt_dlp(url: str, lang: str = 'ru') -> (bool, str, 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(cleaned_url, download=False)
             if info_dict.get('title'):
-                return True, get_translation(lang, "video_available"), "Video is available"
+                return info_dict, get_translation(lang, "video_available"), "Video is available"
             else:
-                return False, get_translation(lang, "unavailable_video_error"), "yt-dlp found no title"
+                return None, get_translation(lang, "unavailable_video_error"), "yt-dlp found no title"
     except yt_dlp.utils.DownloadError as e:
         error_message = str(e).lower()
         if "age restricted" in error_message:
-            return False, get_translation(lang, "age_restricted_error"), "age restricted"
+            return None, get_translation(lang, "age_restricted_error"), "age restricted"
         if "private" in error_message:
-            return False, get_translation(lang, "private_video_error"), "private"
+            return None, get_translation(lang, "private_video_error"), "private"
         if "unavailable" in error_message:
-            return False, get_translation(lang, "unavailable_video_error"), error_message[:400]
-        return False, get_translation(lang, "video_unavailable_check_link"), error_message
+            return None, get_translation(lang, "unavailable_video_error"), error_message[:400]
+        return None, get_translation(lang, "video_unavailable_check_link"), error_message
     except Exception as e:
-        return False, get_translation(lang, "video_unavailable_check_link"), str(e)
+        logger.error(f"An unexpected error occurred while checking video info with yt-dlp API: {e}")
+        return None, get_translation(lang, "video_unavailable_check_link"), str(e)
 
 
 

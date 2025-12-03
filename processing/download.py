@@ -25,6 +25,7 @@ def get_video_duration(url: str) -> Optional[float]:
             'quiet': True,
             'skip_download': True,
             'simulate': True,
+            'noplaylist': True,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
             }
@@ -123,6 +124,7 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
                 'quiet': True,
                 'skip_download': True,
                 'simulate': True,
+                'noplaylist': True,
                 'http_headers': {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
                 }
@@ -169,6 +171,7 @@ def _get_video_info_yt_dlp(url: str, lang: str = 'ru') -> (Optional[dict], str, 
             'skip_download': True,
             'simulate': True,
             'listsubtitles': True,
+            'noplaylist': True,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
             }
@@ -333,6 +336,7 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
     ydl_opts = {
         'format': 'best[height<=1080][ext=mp4]/best[ext=mp4]',
         'outtmpl': output_path,
+        'noplaylist': True,
         'external_downloader': 'ffmpeg',
         'external_downloader_args': {
             'ffmpeg_i': [
@@ -379,7 +383,7 @@ def download_audio_only(url, audio_path):
     audio_path = Path(audio_path).with_suffix(".ogg")
     temp_path = audio_path.with_suffix(".temp.mp4")
     
-    base_yt_dlp_command = ["python3", "-m", "yt_dlp"]
+    base_yt_dlp_command = ["python3", "-m", "yt_dlp", "--no-playlist"]
     base_yt_dlp_command.extend(_get_cookie_args(url))
 
 

@@ -259,12 +259,19 @@ def handle_random_clips_workflow(url, config, out_dir, status_callback, send_vid
     )
 
     successful_sends = 0
-    for future in futures:
+    for render_future in futures:
         try:
-            if future.result():
-                successful_sends += 1
+            # .result() on the render_future waits for _render_clip_from_segment to complete
+            # and returns the send_future created by run_coroutine_threadsafe
+            send_future = render_future.result()
+            
+            if send_future:
+                # .result() on the send_future waits for the send_video coroutine to finish
+                success = send_future.result(timeout=600) 
+                if success:
+                    successful_sends += 1
         except Exception as e:
-            logger.error(f"Future для отправки видео завершился с ошибкой: {e}")
+            logger.error(f"Future для отправки видео завершился с ошибкой: {e}", exc_info=True)
 
     return successful_sends, 0
 
@@ -435,9 +442,9 @@ def orchestrate_clip_creation(config, url, shorts_timecodes, out_dir, send_video
         if segment_path:
             download_count += 1
             print(f"Finished downloading segment {clip_num}. {download_count}/{total_downloads} downloaded.")
-            if status_callback:
-                lang = config.get('lang', 'ru')
-                status_callback(get_translation(lang, "downloading_clips").format(current=download_count, total=total_downloads))
+            # if status_callback:
+            #     lang = config.get('lang', 'ru')
+            #     status_callback(get_translation(lang, "downloading_clips").format(current=download_count, total=total_downloads))
             
             # Submit rendering task for this downloaded segment
             print(f"Submitting clip #{clip_num} for rendering...")

@@ -435,9 +435,9 @@ def orchestrate_clip_creation(config, url, shorts_timecodes, out_dir, send_video
         if segment_path:
             download_count += 1
             print(f"Finished downloading segment {clip_num}. {download_count}/{total_downloads} downloaded.")
-            if status_callback:
-                lang = config.get('lang', 'ru')
-                status_callback(get_translation(lang, "downloading_clips").format(current=download_count, total=total_downloads))
+            # if status_callback:
+            #     lang = config.get('lang', 'ru')
+            #     status_callback(get_translation(lang, "downloading_clips").format(current=download_count, total=total_downloads))
             
             # Submit rendering task for this downloaded segment
             print(f"Submitting clip #{clip_num} for rendering...")

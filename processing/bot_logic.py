@@ -19,12 +19,12 @@ from moviepy.editor import (
 )
 import json
 from faster_whisper import WhisperModel
-from processing.transcription import get_transcript_segments_and_file, get_audio_duration, get_whisper_model
+from processing.transcription import get_transcript_segments_and_file, get_audio_duration
 from processing.subtitles import create_ass_subtitles, get_subtitle_items
-from config import VIDEO_MAP
-from .download import download_video_segment, download_audio_only, get_video_duration
+from config import VIDEO_MAP, MAX_SHORTS_PER_VIDEO, MIN_SHORT_DURATION, MAX_SHORT_DURATION
+from .download import download_video_segment, get_video_duration, get_video_heatmap
 from .layouts import _build_video_canvas
-from .gpt import get_highlights_from_gpt, get_random_highlights_from_gpt
+from .gpt import get_highlights_from_gpt, get_random_highlights
 from utils import to_seconds, format_seconds_to_hhmmss
 from localization import get_translation
 
@@ -57,38 +57,168 @@ def transcribe_audio(url: str, out_dir: Path, lang: str):
     """
     Downloads pre-existing subtitles from YouTube.
     If it fails, it raises an exception, and the main workflow will fall back to random clips.
+    Returns None if transcription fails.
     """
     print("Транскрибируем видео...")
     try:
         transcript_segments, lang_code = get_transcript_segments_and_file(
             url, out_dir=out_dir, force_whisper=False
         )
+        if not transcript_segments:
+            raise ValueError("No transcript segments found.")
+        # This workflow no longer downloads the full audio, so return None for audio_only
+        return transcript_segments, lang_code, None
     except Exception as e:
-        print(f"Не удалось получить субтитры с YouTube: {e}")
-        raise Exception(get_translation(lang, "transcription_error")) from e
+        logger.warning(f"Не удалось получить субтитры (пропускаем): {e}")
+        return None, None, None
 
-    if not transcript_segments:
-        raise ValueError("No transcript segments found.")
+
+def _refine_heatmap_segment(start, end, heatmap, min_dur):
+    """
+    Refines a segment by finding the sub-segment with the highest heatmap density.
+    """
+    duration = end - start
+    if duration <= min_dur:
+        # Calculate density for the whole segment
+        total_val = 0.0
+        for point in heatmap:
+             p_start = point.get('start_time', 0)
+             p_end = point.get('end_time', 0)
+             val = point.get('value', 0)
+             overlap = max(0, min(end, p_end) - max(start, p_start))
+             total_val += overlap * val
+        return start, end, (total_val / duration if duration > 0 else 0)
+    
+    resolution = 1.0
+    num_bins = int(duration / resolution)
+    bins = [0.0] * num_bins
+    
+    for point in heatmap:
+        p_start = point.get('start_time', 0)
+        p_end = point.get('end_time', 0)
+        val = point.get('value', 0)
         
-    # This workflow no longer downloads the full audio, so return None for audio_only
-    return transcript_segments, lang_code, None
+        s_inter = max(start, p_start)
+        e_inter = min(end, p_end)
+        
+        if s_inter < e_inter:
+            b_s = int((s_inter - start) / resolution)
+            b_e = int((e_inter - start) / resolution)
+            for i in range(b_s, min(b_e + 1, num_bins)):
+                bin_start = start + i * resolution
+                bin_end = start + (i + 1) * resolution
+                ov_s = max(bin_start, s_inter)
+                ov_e = min(bin_end, e_inter)
+                if ov_s < ov_e:
+                    bins[i] += (ov_e - ov_s) * val
 
+    best_s = start
+    best_e = end
+    max_density = -1.0
+    
+    for i in range(num_bins):
+        current_sum = 0.0
+        for j in range(i, num_bins):
+            current_sum += bins[j]
+            current_dur = (j - i + 1) * resolution
+            
+            if current_dur >= min_dur:
+                density = current_sum / current_dur
+                if density > max_density:
+                    max_density = density
+                    best_s = start + i * resolution
+                    best_e = start + (j + 1) * resolution
+                    
+    return best_s, best_e, max_density
 
-def get_highlights(out_dir: Path, audio_path: Path, shorts_number: any, video_duration: float):
-    print("Ищем смысловые куски через GPT...")
+def get_highlights(url: str, out_dir: Path, audio_path: Path, shorts_number: any, video_duration: float):
+    print("Ищем виральные моменты...")
     # Используем get_audio_duration только если аудиофайл реально существует
-    duration = video_duration if video_duration else (get_audio_duration(audio_path) if audio_path and audio_path.exists() else None)
+    duration = video_duration if video_duration else (get_audio_duration(audio_path) if audio_path and audio_path.exists() else 0)
     
     shorts_timecodes = []
+
+    # 1. Heatmap Strategy
+    try:
+        print("Попытка получить Heatmap...")
+        heatmap = get_video_heatmap(url)
+        print(heatmap)
+        if heatmap:
+            count = 3
+            if shorts_number == 'auto':
+                if duration < 600: count = 3
+                elif duration < 1200: count = 5
+                elif duration < 2400: count = 8
+                else: count = 10
+            else:
+                try:
+                    count = int(shorts_number)
+                except:
+                    count = 3
+            
+            count = min(count, MAX_SHORTS_PER_VIDEO)
+            
+            window_size = float(MAX_SHORT_DURATION)
+            step = 5.0
+            candidates = []
+            curr = 0.0
+            
+            while curr + window_size <= duration:
+                w_start = curr
+                w_end = curr + window_size
+                score = 0.0
+                for point in heatmap:
+                    p_start = point.get('start_time', 0)
+                    p_end = point.get('end_time', 0)
+                    val = point.get('value', 0)
+                    overlap = max(0, min(w_end, p_end) - max(w_start, p_start))
+                    score += overlap * val
+                candidates.append({'start': w_start, 'end': w_end, 'score': score})
+                curr += step
+            
+            candidates.sort(key=lambda x: x['score'], reverse=True)
+            selected = []
+            for cand in candidates:
+                if len(selected) >= count: break
+                if not any(not (cand['end'] <= s['start'] or cand['start'] >= s['end']) for s in selected):
+                    r_start, r_end, r_density = _refine_heatmap_segment(cand['start'], cand['end'], heatmap, float(MIN_SHORT_DURATION))
+                    selected.append({'start': r_start, 'end': r_end, 'score': cand['score'], 'density': r_density})
+            
+            if selected:
+                for s in selected:
+                    avg_val = s['density']
+                    v_score = max(1, min(10, int(round(avg_val * 10)*2)))  # Scale to 1-10 and boost by 1.5x
+                    shorts_timecodes.append({
+                        "start": format_seconds_to_hhmmss(s['start']),
+                        "end": format_seconds_to_hhmmss(s['end']),
+                        "hook": "",
+                        "virality_score": v_score
+                    })
+                print(f"Heatmap вернул {len(shorts_timecodes)} отрезков.")
+                return shorts_timecodes
+    except Exception as e:
+        logger.warning(f"Heatmap processing failed: {e}")
+
+    # 2. GPT Strategy
+    print("Ищем смысловые куски через GPT...")
+    captions_file = out_dir / "captions.txt"
     try:
         shorts_timecodes = get_highlights_from_gpt(out_dir / "captions.txt", duration, shorts_number=shorts_number)
+        if not captions_file.exists():
+            raise FileNotFoundError("Файл субтитров не найден, пропускаем GPT.")
+            
+        shorts_timecodes = get_highlights_from_gpt(captions_file, duration, shorts_number=shorts_number)
         if not shorts_timecodes:
             # Вызываем ошибку, чтобы перейти в блок except и использовать fallback
             raise ValueError("GPT не вернул таймкоды")
+        return shorts_timecodes
     except Exception as e:
         logger.warning("Не удалось получить хайлайты от GPT (%s), переход к случайной генерации.", e)
+        logger.warning(f"Не удалось получить хайлайты от GPT ({e}), переход к случайной генерации.")
+        
+        # 3. Random Fallback
         try:
-            shorts_timecodes_raw = get_random_highlights_from_gpt(shorts_number, duration)
+            shorts_timecodes_raw = get_random_highlights(shorts_number, duration)
             if not shorts_timecodes_raw:
                 print("Не удалось сгенерировать случайные отрезки.")
                 return None
@@ -101,16 +231,13 @@ def get_highlights(out_dir: Path, audio_path: Path, shorts_number: any, video_du
                     "hook":  it["hook"],
                     "virality_score": it.get("virality_score", 5)
                 })
+            return shorts_timecodes
         except Exception as fallback_e:
             print(f"Ошибка при генерации случайных отрезков: {fallback_e}")
             logger.error("Не удалось сгенерировать случайные отрезки в качестве фолбэка: %s", fallback_e)
             return None
 
-    if not shorts_timecodes:
-        print("GPT не смог выделить подходящие отрезки для шортсов.")
-        return None
-    
-    return shorts_timecodes
+    return None
 
 def create_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback):
     render_futures = process_video_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
@@ -139,6 +266,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
     config['bottom_video_path'] = VIDEO_MAP.get(config['bottom_video'])
     lang = config.get('lang', 'ru')
     platform = config.get('platform', 'youtube')
+    shorts_number = config.get('shorts_number', 'auto')
 
     with temporary_directory(delete=deleteOutputAfterSending) as out_dir:
         if platform == 'twitch':
@@ -148,36 +276,26 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
         if status_callback:
             status_callback(get_translation(lang, "analyzing_video"))
         
-        try:
-            transcript_segments, _, audio_only = transcribe_audio(url, out_dir, lang)
-            if not transcript_segments:
-                raise ValueError("Transcription returned no segments.")
-        except Exception as e:
-            logger.warning(f"Transcription failed: {e}. Falling back to random clips workflow.")
-            return handle_random_clips_workflow(url, config, out_dir, status_callback, send_video_callback)
-
-        shorts_number = config.get('shorts_number', 'auto')
-        
-        try:
-            video_duration = get_video_duration(url)
-            # shorts_timecodes = [{ "start": "00:00:04.1", "end": "00:01:18.1", "hook": "", "virality_score": 5},
-            #     { "start": "00:01:04.1", "end": "00:02:18.1", "hook": "", "virality_score": 5},
-            #     { "start": "00:02:04.1", "end": "00:03:18.1", "hook": "", "virality_score": 5}]
-            shorts_timecodes = get_highlights(out_dir, audio_only, shorts_number, video_duration)
-            
-            if shorts_timecodes:
-                shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
-
-        except ValueError as e:
-            logger.error("Не удалось получить хайлайты от GPT: %s", e)
-            if status_callback:
-                status_callback(get_translation(lang, "gpt_highlights_error"))
+        # 1. Получаем длительность (Критично для всего)
+        video_duration = get_video_duration(url)
+        if not video_duration:
+            logger.error(f"Failed to get video duration for {url}")
             return 0, 0
+
+        # 2. Пробуем транскрибировать (Опционально: нужно для GPT и субтитров)
+        # Если не получится - вернет None, и мы просто не будем использовать GPT/субтитры
+        transcript_segments, _, audio_only = transcribe_audio(url, out_dir, lang)
+
+        # 3. Определяем хайлайты (Heatmap -> GPT -> Random)
+        shorts_timecodes = get_highlights(url, out_dir, audio_only, shorts_number, video_duration)
         
         if not shorts_timecodes:
+            logger.error("Не удалось получить таймкоды ни одним из методов.")
             if status_callback:
                 status_callback(get_translation(lang, "gpt_highlights_error"))
             return 0, 0
+            
+        shorts_timecodes.sort(key=lambda x: x.get('virality_score', 0), reverse=True)
 
         num_to_process = len(shorts_timecodes)
         shorts_to_process = shorts_timecodes[:num_to_process]
@@ -187,6 +305,7 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             status_callback(get_translation(lang, "clips_found").format(shorts_timecodes_len=len(shorts_timecodes), num_to_process=num_to_process))
         print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
+        # 4. Создаем клипы
         successful_sends = create_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
 
         if audio_only and os.path.exists(audio_only):
@@ -214,7 +333,7 @@ def handle_random_clips_workflow(url, config, out_dir, status_callback, send_vid
         
     shorts_number = config.get('shorts_number', 'auto')
     try:
-        shorts_timecodes_raw = get_random_highlights_from_gpt(shorts_number, duration)
+        shorts_timecodes_raw = get_random_highlights(shorts_number, duration)
         if not shorts_timecodes_raw:
             raise ValueError("GPT returned no timecodes.")
             
@@ -297,8 +416,6 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
     
     ass_path = None
     if subtitles_type != 'no_subtitles':
-        faster_whisper_model = get_whisper_model()
-        
         if current_transcript_segments is None:
             segments, _ = get_transcript_segments_and_file(
                 url=None, 
@@ -322,8 +439,7 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
         
         audio_for_subtitles = segment_video_path if audio_path is None else audio_path
         subtitle_items = get_subtitle_items(
-            subtitles_type, current_transcript_segments, audio_for_subtitles, start_cut, end_cut, 
-            faster_whisper_model)
+            subtitles_type, current_transcript_segments, audio_for_subtitles, start_cut, end_cut)
         
         ass_path = out_dir / f"short{clip_num}.ass"
         

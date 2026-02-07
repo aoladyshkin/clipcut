@@ -6,8 +6,8 @@ import logging
 from typing import List, Dict, Any, Tuple, Optional
 
 import pysubs2
-from faster_whisper import WhisperModel
 from spellchecker import SpellChecker
+from processing.transcription import transcribe_with_word_timestamps
 
 logger = logging.getLogger(__name__)
 
@@ -67,39 +67,6 @@ def _similarity(a: str, b: str) -> float:
     m = max(len(a or ""), len(b or ""))
     if m == 0: return 1.0
     return 1.0 - (_levenshtein(a or "", b or "") / m)
-
-
-# ============================ 
-# АУДИО ВЫРЕЗКА
-# ============================ 
-
-def _extract_wav_pcm(audio_path: str, start_cut: float, end_cut: float, pad: float = AUDIO_PAD_SEC) -> Tuple[str, float]:
-    """
-    Нарезаем WAV PCM 16k mono (без потерь) с маленьким паддингом.
-    Возвращаем (временный_путь, абсолютный_сдвиг_начала_куска).
-    """
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    chunk_path = tmp.name
-    tmp.close()
-
-    ss = max(0.0, start_cut - pad)
-    to = end_cut + pad
-
-    cmd = [
-        "ffmpeg",
-        "-ss", f"{ss:.2f}",
-        "-to", f"{to:.2f}",
-        "-i", str(audio_path),
-        "-ac", "1", "-ar", "16000",
-        "-c:a", "pcm_s16le",
-        "-y", chunk_path
-    ]
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    if res.returncode != 0:
-        try: os.remove(chunk_path)
-        except Exception: pass
-        raise RuntimeError(f"ffmpeg failed: {res.stderr[:400]}")
-    return chunk_path, ss
 
 
 # ============================ 
@@ -313,8 +280,7 @@ def get_subtitle_items(subtitles_type: str,
                        transcript_segments: List[Dict[str, Any]],
                        audio_path: str,
                        start_cut: float,
-                       end_cut: float,
-                       faster_whisper_model: WhisperModel) -> List[Dict[str, Any]]:
+                       end_cut: float) -> List[Dict[str, Any]]:
     """
     - 'word-by-word': простая транскрибация faster-whisper БЕЗ initial_prompt,
       каждое слово с таймкодом начала и конца; точки/запятые/кавычки убраны.
@@ -328,14 +294,7 @@ def get_subtitle_items(subtitles_type: str,
         offset = start_cut
         try:
             # Минимальный и стабильный вызов распознавания:
-            segments, _ = faster_whisper_model.transcribe(
-                str(audio_path),
-                task="transcribe",
-                word_timestamps=True,
-                beam_size=5,
-                best_of=5,
-                temperature=0.0
-            )
+            segments = transcribe_with_word_timestamps(str(audio_path))
 
             # Слова из сегментов
             items = _segments_to_word_items(segments, start_cut, end_cut, offset)

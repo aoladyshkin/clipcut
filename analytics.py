@@ -91,4 +91,6 @@ def clear_analytics_table():
             
 if __name__ == "__main__":
     init_analytics_db()
+    # log_event(351764038, 'payment_success', {'provider': 'yookassa', 'generations_amount': 1, 'total_amount': 149, 'currency': "RUB"})
+
     # clear_analytics_table()  # Uncomment to clear the table

@@ -331,28 +331,31 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
     The segment is re-encoded to prevent frozen frames at the beginning.
     """
     output_path = str(output_path)
-    duration = end_time - start_time
+
+    def range_func(info_dict, ydl):
+        return [{'start_time': start_time, 'end_time': end_time}]
 
     ydl_opts = {
         'format': 'best[height<=1080][ext=mp4]/best[ext=mp4]',
         'outtmpl': output_path,
         'noplaylist': True,
-        'external_downloader': 'ffmpeg',
-        'external_downloader_args': {
-            'ffmpeg_i': [
-                '-reconnect', '1',
-                '-reconnect_streamed', '1',
-                '-reconnect_delay_max', '5',
-                '-ss', str(start_time)
-            ],
-            'default': [
-                '-t', str(duration),
+        'download_ranges': range_func,
+        'force_keyframes_at_cuts': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        },
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web']
+            }
+        },
+        'downloader_args': {
+            'ffmpeg': [
                 '-c:v', 'libx264',
                 '-preset', 'medium',
                 '-crf', '20',
                 '-c:a', 'aac',
-                '-b:a', '192k',
-                '-avoid_negative_ts', 'make_zero'
+                '-b:a', '192k'
             ]
         }
     }
@@ -361,7 +364,7 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
         ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
 
     try:
-        print(f"Downloading segment from {start_time} to {end_time} using yt-dlp and ffmpeg...")
+        print(f"Downloading segment from {start_time} to {end_time} using yt-dlp download_ranges...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         
@@ -451,5 +454,3 @@ def download_audio_only(url, audio_path):
     # 5. Очистка
     temp_path.unlink(missing_ok=True)
     return audio_path
-
-

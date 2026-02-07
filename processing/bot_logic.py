@@ -73,6 +73,64 @@ def transcribe_audio(url: str, out_dir: Path, lang: str):
         return None, None, None
 
 
+def _refine_heatmap_segment(start, end, heatmap, min_dur):
+    """
+    Refines a segment by finding the sub-segment with the highest heatmap density.
+    """
+    duration = end - start
+    if duration <= min_dur:
+        # Calculate density for the whole segment
+        total_val = 0.0
+        for point in heatmap:
+             p_start = point.get('start_time', 0)
+             p_end = point.get('end_time', 0)
+             val = point.get('value', 0)
+             overlap = max(0, min(end, p_end) - max(start, p_start))
+             total_val += overlap * val
+        return start, end, (total_val / duration if duration > 0 else 0)
+    
+    resolution = 1.0
+    num_bins = int(duration / resolution)
+    bins = [0.0] * num_bins
+    
+    for point in heatmap:
+        p_start = point.get('start_time', 0)
+        p_end = point.get('end_time', 0)
+        val = point.get('value', 0)
+        
+        s_inter = max(start, p_start)
+        e_inter = min(end, p_end)
+        
+        if s_inter < e_inter:
+            b_s = int((s_inter - start) / resolution)
+            b_e = int((e_inter - start) / resolution)
+            for i in range(b_s, min(b_e + 1, num_bins)):
+                bin_start = start + i * resolution
+                bin_end = start + (i + 1) * resolution
+                ov_s = max(bin_start, s_inter)
+                ov_e = min(bin_end, e_inter)
+                if ov_s < ov_e:
+                    bins[i] += (ov_e - ov_s) * val
+
+    best_s = start
+    best_e = end
+    max_density = -1.0
+    
+    for i in range(num_bins):
+        current_sum = 0.0
+        for j in range(i, num_bins):
+            current_sum += bins[j]
+            current_dur = (j - i + 1) * resolution
+            
+            if current_dur >= min_dur:
+                density = current_sum / current_dur
+                if density > max_density:
+                    max_density = density
+                    best_s = start + i * resolution
+                    best_e = start + (j + 1) * resolution
+                    
+    return best_s, best_e, max_density
+
 def get_highlights(url: str, out_dir: Path, audio_path: Path, shorts_number: any, video_duration: float):
     print("Ищем виральные моменты...")
     # Используем get_audio_duration только если аудиофайл реально существует
@@ -123,11 +181,12 @@ def get_highlights(url: str, out_dir: Path, audio_path: Path, shorts_number: any
             for cand in candidates:
                 if len(selected) >= count: break
                 if not any(not (cand['end'] <= s['start'] or cand['start'] >= s['end']) for s in selected):
-                    selected.append(cand)
+                    r_start, r_end, r_density = _refine_heatmap_segment(cand['start'], cand['end'], heatmap, float(MIN_SHORT_DURATION))
+                    selected.append({'start': r_start, 'end': r_end, 'score': cand['score'], 'density': r_density})
             
             if selected:
                 for s in selected:
-                    avg_val = s['score'] / window_size
+                    avg_val = s['density']
                     v_score = max(1, min(10, int(round(avg_val * 10)*2)))  # Scale to 1-10 and boost by 1.5x
                     shorts_timecodes.append({
                         "start": format_seconds_to_hhmmss(s['start']),

@@ -20,7 +20,6 @@ def get_video_duration(url: str) -> Optional[float]:
     Retrieves the duration of a video in seconds using yt-dlp, with an ffprobe fallback.
     """
     try:
-        cleaned_url = url.split('?')[0]
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
@@ -30,11 +29,11 @@ def get_video_duration(url: str) -> Optional[float]:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
             }
         }
-        if get_video_platform(cleaned_url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+        if get_video_platform(url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
             ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(cleaned_url, download=False)
+            info_dict = ydl.extract_info(url, download=False)
             
             duration = info_dict.get('duration')
             
@@ -90,7 +89,7 @@ def get_video_duration(url: str) -> Optional[float]:
                         logger.error(f"An unexpected error occurred with ffprobe: {e}")
 
             if duration is None:
-                logger.warning(f"Could not find 'duration' in any known location for {cleaned_url}.")
+                logger.warning(f"Could not find 'duration' in any known location for {url}.")
 
             return duration
     except Exception as e:
@@ -119,7 +118,6 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     
     elif platform == 'twitch':
         try:
-            cleaned_url = url.split('?')[0]
             ydl_opts = {
                 'quiet': True,
                 'skip_download': True,
@@ -130,7 +128,7 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
                 }
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info_dict = ydl.extract_info(cleaned_url, download=False)
+                info_dict = ydl.extract_info(url, download=False)
 
             title = info_dict.get('title')
             if not title:
@@ -165,7 +163,6 @@ def _get_video_info_yt_dlp(url: str, lang: str = 'ru') -> (Optional[dict], str, 
     Returns (info_dict, message, error_log)
     """
     try:
-        cleaned_url = url.split('?')[0]
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
@@ -176,11 +173,11 @@ def _get_video_info_yt_dlp(url: str, lang: str = 'ru') -> (Optional[dict], str, 
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
             }
         }
-        if get_video_platform(cleaned_url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+        if get_video_platform(url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
             ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info_dict = ydl.extract_info(cleaned_url, download=False)
+            info_dict = ydl.extract_info(url, download=False)
             if info_dict.get('title'):
                 return info_dict, get_translation(lang, "video_available"), "Video is available"
             else:
@@ -324,6 +321,32 @@ def _find_itag_for_lang_with_yt_dlp(url, lang: str, yt_dlp_command: list):
         print(f"Ошибка при вызове yt-dlp для получения форматов: {e}")
         return None
 
+def get_video_heatmap(url: str) -> Optional[List[Dict[str, float]]]:
+    """
+    Retrieves the 'Most Replayed' heatmap data from YouTube using yt-dlp.
+    Returns a list of dicts: [{'start_time': float, 'end_time': float, 'value': float}, ...]
+    """
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'noplaylist': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+            }
+        }
+        
+        if get_video_platform(url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+            ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return info.get('heatmap')
+
+    except Exception as e:
+        logger.error(f"Error getting heatmap for {url}: {e}")
+        return None
+
 def download_video_segment(url: str, output_path: str, start_time: float, end_time: float):
     """
     Downloads a specific segment of a YouTube video using yt-dlp and ffmpeg.
@@ -377,80 +400,3 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
         logger.error(f"yt-dlp/ffmpeg failed to download segment: {error_message}", exc_info=True)
         # Re-raise with a more user-friendly message if needed, or just raise to propagate.
         raise
-
-def download_audio_only(url, audio_path):
-    """
-    Автоматически определяет язык, проверяя наличие и аудио, и субтитров,
-    скачивает наилучшее качество и имеет запасной вариант.
-    """
-    audio_path = Path(audio_path).with_suffix(".ogg")
-    temp_path = audio_path.with_suffix(".temp.mp4")
-    
-    base_yt_dlp_command = ["python3", "-m", "yt_dlp", "--no-playlist"]
-    base_yt_dlp_command.extend(_get_cookie_args(url))
-
-
-    itag = None
-    try:
-        # 1. Получить список доступных аудио-языков
-        available_audio_langs = _get_available_audio_langs(url, base_yt_dlp_command)
-        if not available_audio_langs:
-            print("Не найдено ни одной аудиодорожки через yt-dlp.")
-        
-        # 2. Выбрать язык, где есть и аудио, и субтитры
-        yt = YouTube(url)
-        _, chosen_code = _pick_lang_and_caption(yt, available_audio_langs)
-        
-        if chosen_code:
-            lang = _norm_lang(chosen_code)
-            print(f"Автоматически определен язык '{lang}' (субтитры: {chosen_code}). Ищем аудио...")
-            itag = _find_itag_for_lang_with_yt_dlp(url, lang, base_yt_dlp_command)
-        else:
-            print("Не удалось найти язык, где есть и аудио, и субтитры.")
-
-    except Exception as e:
-        print(f"Ошибка при определении языка: {e}. Переключаемся на метод по умолчанию.")
-
-    downloaded = False
-    if itag:
-        print(f"Попытка скачать аудио с itag={itag} с помощью yt-dlp...")
-        try:
-            command = list(base_yt_dlp_command)
-            command.extend(["-f", itag, "--user-agent", "Mozilla/5.0", "-o", str(temp_path), url])
-            subprocess.run(command, check=True, timeout=300)
-            print("yt-dlp: Аудио успешно скачано.")
-            downloaded = True
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e_dlp:
-
-            print(f"yt-dlp не смог скачать аудио с itag={itag}: {e_dlp}")
-
-    # 3. Запасной метод: если ничего не вышло, качаем лучшее аудио через pytubefix
-    if not downloaded:
-        print("Переключаемся на pytubefix для скачивания аудио по умолчанию.")
-        try:
-            yt = YouTube(url)
-            stream = yt.streams.filter(only_audio=True).order_by('abr').desc().first()
-            if not stream:
-                raise ConnectionError("pytubefix не нашел аудиопотоков.")
-            
-            print(f"pytubefix скачивает аудиопоток с itag={stream.itag} (лучшее качество)...")
-            stream.download(output_path=str(temp_path.parent), filename=temp_path.name)
-            print("pytubefix: Аудио успешно скачано.")
-        except Exception as e:
-            print(f"pytubefix тоже не смог скачать аудио: {e}")
-            return None
-
-    # 4. Конвертация в .ogg
-    try:
-        subprocess.run([
-            "ffmpeg", "-i", str(temp_path), "-ac", "1", "-ar", "24000",
-            "-c:a", "libopus", "-b:a", "32k", "-y", str(audio_path)
-        ], check=True, capture_output=True, text=True)
-    except subprocess.CalledProcessError as e_ffmpeg:
-        print(f"ffmpeg conversion failed: {e_ffmpeg.stderr}")
-        temp_path.unlink(missing_ok=True)
-        return None
-
-    # 5. Очистка
-    temp_path.unlink(missing_ok=True)
-    return audio_path

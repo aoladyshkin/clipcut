@@ -173,7 +173,7 @@ def generate_random_shorts(audio_duration: float, shorts_number: any = 'auto') -
     return generated_shorts
 
 
-def get_random_highlights_from_gpt(shorts_number, audio_duration):
+def get_random_highlights(shorts_number, audio_duration):
     """
     Запасной вариант: если GPT не вернул JSON, генерируем случайные таймкоды.
     Также добавляем убывающую оценку виральности.
@@ -248,7 +248,7 @@ def get_highlights_from_gpt(captions_path: str = "captions.txt", audio_duration:
             raise ValueError("Не удалось спарсить субтитры для фолбэка.")
 
         max_duration = audio_duration
-        data = get_random_highlights_from_gpt(shorts_number, max_duration)
+        data = get_random_highlights(shorts_number, max_duration)
         if data is None:
             raise ValueError("Фолбэк-механизм также не смог сгенерировать таймкоды.")
         is_fallback = True

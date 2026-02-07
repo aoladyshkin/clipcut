@@ -5,7 +5,6 @@ import re
 import json
 import yt_dlp
 from pathlib import Path
-from pytubefix import YouTube
 from config import YOUTUBE_COOKIES_FILE, FREESPACE_LIMIT_MB
 from typing import Optional, List, Dict, Tuple, Set
 from utils import get_video_platform

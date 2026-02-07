@@ -19,7 +19,7 @@ from moviepy.editor import (
 )
 import json
 from faster_whisper import WhisperModel
-from processing.transcription import get_transcript_segments_and_file, get_audio_duration, get_whisper_model
+from processing.transcription import get_transcript_segments_and_file, get_audio_duration
 from processing.subtitles import create_ass_subtitles, get_subtitle_items
 from config import VIDEO_MAP, MAX_SHORTS_PER_VIDEO, MIN_SHORT_DURATION, MAX_SHORT_DURATION
 from .download import download_video_segment, get_video_duration, get_video_heatmap
@@ -357,8 +357,6 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
     
     ass_path = None
     if subtitles_type != 'no_subtitles':
-        faster_whisper_model = get_whisper_model()
-        
         if current_transcript_segments is None:
             segments, _ = get_transcript_segments_and_file(
                 url=None, 
@@ -382,8 +380,7 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
         
         audio_for_subtitles = segment_video_path if audio_path is None else audio_path
         subtitle_items = get_subtitle_items(
-            subtitles_type, current_transcript_segments, audio_for_subtitles, start_cut, end_cut, 
-            faster_whisper_model)
+            subtitles_type, current_transcript_segments, audio_for_subtitles, start_cut, end_cut)
         
         ass_path = out_dir / f"short{clip_num}.ass"
         

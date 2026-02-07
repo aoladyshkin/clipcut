@@ -3,11 +3,10 @@ import os
 import subprocess
 import math
 import tempfile
-from pytubefix import YouTube
+import yt_dlp
 import logging
 import pysubs2
 from faster_whisper import WhisperModel
-from spellchecker import SpellChecker
 
 logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
@@ -16,6 +15,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import html, re
 from typing import List, Dict, Tuple, Optional
+from config import YOUTUBE_COOKIES_FILE
 
 client = None # No longer using OpenAI API
 
@@ -35,75 +35,63 @@ def get_whisper_model():
 # =========================
 # УТИЛИТЫ ЯЗЫК/КАПШНЫ
 # =========================
-def _norm_lang(code: str) -> str:
-    c = code[2:] if code.startswith("a.") else code
-    return c.split("-")[0].lower()
+def _pick_best_subtitle_yt_dlp(info_dict: dict) -> Tuple[Optional[str], bool]:
+    """
+    Выбирает лучший код языка и тип (авто/мануал) на основе логики приоритетов.
+    Возвращает (lang_code, is_auto).
+    """
+    subs = info_dict.get('subtitles', {}) or {}
+    auto_subs = info_dict.get('automatic_captions', {}) or {}
 
-def _caption_pairs(captions) -> List[Tuple[str, object]]:
-    pairs = []
-    try:
-        for k, v in captions.items():
-            code = k if isinstance(k, str) else getattr(v, "code", None) or getattr(k, "code", None)
-            if isinstance(code, str):
-                pairs.append((code, v))
-    except Exception:
-        for obj in captions:
-            code = getattr(obj, "code", None) or getattr(obj, "name", None)
-            if isinstance(code, str):
-                pairs.append((code, obj))
-    # убрать дубликаты, сохраняя порядок
-    seen, out = set(), []
-    for code, cap in pairs:
-        if code not in seen:
-            out.append((code, cap)); seen.add(code)
-    return out
+    manual_langs = set(subs.keys())
+    auto_langs = set(auto_subs.keys())
+    all_langs = manual_langs | auto_langs
 
-def _detect_spoken_lang(pairs: List[Tuple[str, object]]) -> Optional[str]:
-    langs_present = {_norm_lang(code) for code, _ in pairs}
-    for lang in ("ru", "uk", "en"):
-        if lang in langs_present:
-            return lang
-    return None
+    if not all_langs:
+        return None, False
 
-def _pick_caption(yt) -> Tuple[Optional[object], Optional[str]]:
-    pairs = _caption_pairs(yt.captions)
-    if not pairs:
-        return None, None
+    # Нормализация для поиска (en-US -> en)
+    def get_base_lang(code):
+        return code.split('-')[0].lower()
 
-    manual = [(c, cap) for c, cap in pairs if not c.startswith("a.")]
-    auto   = [(c, cap) for c, cap in pairs if c.startswith("a.")]
-    langs_manual = {_norm_lang(c): (c, cap) for c, cap in manual}
-    langs_auto   = {_norm_lang(c): (c, cap) for c, cap in auto}
+    # 0. Определяем "разговорный" язык (если он есть в списке приоритетных)
+    spoken = None
+    for priority_lang in ("ru", "uk", "en"):
+        if any(get_base_lang(l) == priority_lang for l in all_langs):
+            spoken = priority_lang
+            break
 
-    spoken = _detect_spoken_lang(pairs)
-    tried = set()
+    def try_pick(target_base_lang: str) -> Tuple[Optional[str], bool]:
+        # Сначала ищем в ручных
+        for l in manual_langs:
+            if get_base_lang(l) == target_base_lang:
+                return l, False
+        # Потом в авто
+        for l in auto_langs:
+            if get_base_lang(l) == target_base_lang:
+                return l, True
+        return None, False
 
-    def try_pick(lang: str) -> Optional[Tuple[object, str]]:
-        # сначала ручные, потом авто
-        if lang in langs_manual and langs_manual[lang][0] not in tried:
-            c, cap = langs_manual[lang]; tried.add(c); return cap, c
-        if lang in langs_auto and langs_auto[lang][0] not in tried:
-            c, cap = langs_auto[lang]; tried.add(c); return cap, c
-        return None
-
-    # 1) язык речи — ручные -> авто
+    # 1. Приоритет: Spoken (Manual -> Auto)
     if spoken:
-        r = try_pick(spoken)
-        if r: return r
+        code, is_auto = try_pick(spoken)
+        if code: return code, is_auto
 
-    # 2) ru -> uk -> en (пропуская spoken, если он уже пробован)
+    # 2. Приоритет: ru -> uk -> en (Manual -> Auto)
     for lang in ("ru", "uk", "en"):
-        if lang == spoken:
-            continue
-        r = try_pick(lang)
-        if r: return r
+        if lang == spoken: continue
+        code, is_auto = try_pick(lang)
+        if code: return code, is_auto
 
-    # 3) любые прочие: ручные, затем авто
-    for c, cap in manual + auto:
-        if c not in tried:
-            return cap, c
+    # 3. Любые ручные
+    if manual_langs:
+        return list(manual_langs)[0], False
 
-    return None, None
+    # 4. Любые авто
+    if auto_langs:
+        return list(auto_langs)[0], True
+
+    return None, False
 
 # =========================
 # ФИЛЬТР РЕМАРОК
@@ -260,19 +248,61 @@ def write_captions_file(segments: List[Dict[str, float]], filename: str = "capti
 # ПОЛУЧЕНИЕ СЕГМЕНТОВ ИЗ YOUTUBE
 # =========================
 def download_captions_from_youtube(url: str) -> Tuple[List[Dict[str, float]], Optional[str]]:
-    yt = YouTube(url)
-    if not yt.captions:
-        raise RuntimeError("Субтитры не найдены.")
+    # 1. Получаем информацию о доступных субтитрах (без скачивания)
+    ydl_opts_info = {
+        'skip_download': True,
+        'noplaylist': True,
+        'quiet': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        }
+    }
+    if YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+        ydl_opts_info['cookiefile'] = YOUTUBE_COOKIES_FILE
 
-    cap, chosen_code = _pick_caption(yt)
-    if not cap:
-        raise RuntimeError(f"Подходящая дорожка не найдена. Доступные: "
-                           f"{[_c for _c, _ in _caption_pairs(yt.captions)]}")
+    with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
+        try:
+            info = ydl.extract_info(url, download=False)
+        except Exception as e:
+            raise RuntimeError(f"Ошибка получения инфо о видео: {e}")
 
-    srt_text = cap.generate_srt_captions()
+    # 2. Выбираем лучшую дорожку по нашей логике
+    chosen_code, is_auto = _pick_best_subtitle_yt_dlp(info)
+    if not chosen_code:
+        raise RuntimeError("Субтитры не найдены (ни ручные, ни авто).")
+
+    # 3. Скачиваем выбранную дорожку
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        out_tmpl = os.path.join(tmpdirname, 'subs')
+        ydl_opts_down = {
+            'skip_download': True,
+            'writesubtitles': not is_auto,
+            'writeautomaticsub': is_auto,
+            'subtitleslangs': [chosen_code],
+            'subtitlesformat': 'srt',
+            'outtmpl': out_tmpl,
+            'quiet': True,
+            'noplaylist': True,
+        }
+        if YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
+            ydl_opts_down['cookiefile'] = YOUTUBE_COOKIES_FILE
+
+        with yt_dlp.YoutubeDL(ydl_opts_down) as ydl:
+            ydl.download([url])
+
+        # Ищем скачанный файл (yt-dlp добавляет код языка в имя файла)
+        files = [f for f in os.listdir(tmpdirname) if f.endswith('.srt')]
+        if not files:
+            raise RuntimeError(f"Не удалось скачать выбранные субтитры ({chosen_code}).")
+        
+        srt_path = os.path.join(tmpdirname, files[0])
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            srt_text = f.read()
+
     segs = _srt_to_segments(srt_text)
     if not segs:
-        raise RuntimeError("Получены пустые субтитры после фильтрации ремарок.")
+        raise RuntimeError("Получены пустые субтитры после парсинга.")
+        
     return segs, chosen_code
 
 # =========================
@@ -323,6 +353,22 @@ def transcribe_via_faster_whisper(audio_path) -> List[Dict[str, float]]:
     
     logger.info(f"Transcription via faster-whisper complete for {audio_path}.")
     return transcript_list
+
+def transcribe_with_word_timestamps(audio_path):
+    """
+    Transcribes audio with word-level timestamps using high quality settings.
+    Returns list of Segment objects (from faster_whisper).
+    """
+    model = get_whisper_model()
+    segments, _ = model.transcribe(
+        str(audio_path),
+        task="transcribe",
+        word_timestamps=True,
+        beam_size=5,
+        best_of=5,
+        temperature=0.0
+    )
+    return list(segments)
 
 # =========================
 # ЕДИНАЯ ТОЧКА: ПОЛУЧИТЬ СЕГМЕНТЫ И ЗАПИСАТЬ SRT

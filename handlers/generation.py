@@ -44,7 +44,7 @@ async def get_url(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     _, _, _, lang, _ = get_user(user_id)
     context.user_data['lang'] = lang
 
-    url_match = re.search(r'https?:\/\/(www\.)?(youtube\.com|youtu\.be|twitch\.tv)\S+', update.message.text)
+    url_match = re.search(r'https?:\/\/(www\.)?(youtube\.com|youtu\.be|twitch\.tv|drive\.google\.com|docs\.google\.com)\S+', update.message.text)
     if not url_match:
         await update.message.reply_text(get_translation(lang, "send_correct_youtube_link")) # TODO: Update translation for Twitch
         return GET_URL

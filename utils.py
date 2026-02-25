@@ -90,4 +90,8 @@ def get_video_platform(url: str):
         return "youtube"
     if "twitch.tv/" in url:
         return "twitch"
+    if "drive.google.com" in url or "docs.google.com" in url:
+        return "google_drive"
+    if url.startswith("http"):
+        return "general"
     return None

@@ -22,10 +22,10 @@ from faster_whisper import WhisperModel
 from processing.transcription import get_transcript_segments_and_file, get_audio_duration
 from processing.subtitles import create_ass_subtitles, get_subtitle_items
 from config import VIDEO_MAP, MAX_SHORTS_PER_VIDEO, MIN_SHORT_DURATION, MAX_SHORT_DURATION
-from .download import download_video_segment, get_video_duration, get_video_heatmap
+from .download import download_video_segment, get_video_duration, get_video_heatmap, download_audio_track
 from .layouts import _build_video_canvas
 from .gpt import get_highlights_from_gpt, get_random_highlights
-from utils import to_seconds, format_seconds_to_hhmmss
+from utils import to_seconds, format_seconds_to_hhmmss, get_video_platform
 from localization import get_translation
 
 
@@ -60,14 +60,24 @@ def transcribe_audio(url: str, out_dir: Path, lang: str):
     Returns None if transcription fails.
     """
     print("Транскрибируем видео...")
+    platform = get_video_platform(url)
+    audio_path = None
+
     try:
-        transcript_segments, lang_code = get_transcript_segments_and_file(
-            url, out_dir=out_dir, force_whisper=False
-        )
+        if platform == 'general' or platform == 'google_drive':
+            audio_path = out_dir / "audio.mp3"
+            download_audio_track(url, str(audio_path))
+            transcript_segments, lang_code = get_transcript_segments_and_file(
+                url=None, out_dir=out_dir, audio_path=audio_path, force_whisper=True
+            )
+        else:
+            transcript_segments, lang_code = get_transcript_segments_and_file(
+                url, out_dir=out_dir, force_whisper=False
+            )
+
         if not transcript_segments:
             raise ValueError("No transcript segments found.")
-        # This workflow no longer downloads the full audio, so return None for audio_only
-        return transcript_segments, lang_code, None
+        return transcript_segments, lang_code, audio_path
     except Exception as e:
         logger.warning(f"Не удалось получить субтитры (пропускаем): {e}")
         return None, None, None

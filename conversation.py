@@ -63,7 +63,7 @@ def get_conv_handler():
             CommandHandler("start", start),
             MessageHandler(
                 filters.TEXT & ~filters.COMMAND & 
-                (filters.Regex(r'https?:\/\/(www\.)?(youtube\.com|youtu\.be|twitch\.tv)\S+')), 
+                (filters.Regex(r'https?:\/\/(www\.)?(youtube\.com|youtu\.be|twitch\.tv|drive\.google\.com|docs\.google\.com)\S+')), 
                 url_entrypoint
             ),
             CallbackQueryHandler(start_demo, pattern='^start_demo$'),
@@ -111,7 +111,7 @@ def get_conv_handler():
                 CallbackQueryHandler(handle_rating, pattern='^rate_')
             ],
             FEEDBACK: [
-                MessageHandler(filters.TEXT & (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/')), get_url),
+                MessageHandler(filters.TEXT & (filters.Regex(r'youtube\.com/') | filters.Regex(r'youtu\.be/') | filters.Regex(r'twitch\.tv/') | filters.Regex(r'drive\.google\.com/') | filters.Regex(r'docs\.google\.com/')), get_url),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, handle_feedback),
                 CallbackQueryHandler(skip_feedback, pattern='^skip_feedback$')
             ],

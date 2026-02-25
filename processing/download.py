@@ -151,6 +151,21 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
             logger.error(f"Error checking twitch video availability {url}: {e}")
             return False, get_translation(lang, "video_unavailable_check_link"), str(e)
 
+    elif platform == 'general' or platform == 'google_drive':
+        try:
+            ydl_opts = {
+                'quiet': True,
+                'skip_download': True,
+                'simulate': True,
+                'noplaylist': True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_dict = ydl.extract_info(url, download=False)
+                if info_dict.get('title') or info_dict.get('id'):
+                    return True, get_translation(lang, "video_available"), "Video is available"
+                return False, get_translation(lang, "unavailable_video_error"), "No title/id found"
+        except Exception as e:
+             return False, get_translation(lang, "unavailable_video_error"), str(e)
     else:
         return False, "Unsupported video platform", "unsupported_platform"
 
@@ -346,6 +361,63 @@ def get_video_heatmap(url: str) -> Optional[List[Dict[str, float]]]:
         logger.error(f"Error getting heatmap for {url}: {e}")
         return None
 
+def download_audio_track(url: str, output_path: str):
+    """Downloads audio from a URL using yt-dlp."""
+    platform = get_video_platform(url)
+    
+    # Optimization for Google Drive / General: Stream audio via ffmpeg to avoid downloading video
+    if platform in ['general', 'google_drive']:
+        try:
+            ydl_opts = {
+                'quiet': True,
+                'skip_download': True,
+                'noplaylist': True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                stream_url = info.get('url')
+                
+                if stream_url:
+                    logger.info(f"Streaming audio directly from {url} via ffmpeg...")
+                    cmd = ["ffmpeg", "-y"]
+                    
+                    if 'http_headers' in info and 'User-Agent' in info['http_headers']:
+                        cmd.extend(["-user_agent", info['http_headers']['User-Agent']])
+                        
+                    cmd.extend([
+                        "-i", stream_url,
+                        "-vn",
+                        "-acodec", "libmp3lame",
+                        "-q:a", "2",
+                        str(output_path)
+                    ])
+                    
+                    subprocess.run(cmd, check=True, capture_output=True)
+                    if os.path.exists(output_path):
+                        return
+        except Exception as e:
+            logger.warning(f"Direct ffmpeg streaming failed for {url}: {e}. Falling back to yt-dlp download.")
+
+    base_name = str(output_path).rsplit('.', 1)[0]
+    
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': base_name + '.%(ext)s',
+        'quiet': True,
+        'noplaylist': True,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([url])
+    
+    expected_file = base_name + '.mp3'
+    if os.path.exists(expected_file) and expected_file != str(output_path):
+        shutil.move(expected_file, output_path)
+
 def download_video_segment(url: str, output_path: str, start_time: float, end_time: float):
     """
     Downloads a specific segment of a YouTube video using yt-dlp and ffmpeg.
@@ -358,7 +430,8 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
         return [{'start_time': start_time, 'end_time': end_time}]
 
     ydl_opts = {
-        'format': 'best[height<=1080][ext=mp4]/best[ext=mp4]',
+        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
+        'merge_output_format': 'mp4',
         'outtmpl': output_path,
         'noplaylist': True,
         'download_ranges': range_func,

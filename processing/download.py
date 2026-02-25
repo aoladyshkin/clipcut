@@ -430,7 +430,7 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
         return [{'start_time': start_time, 'end_time': end_time}]
 
     ydl_opts = {
-        'format': 'best[height<=1080][ext=mp4]/best[ext=mp4]',
+        'format': 'bestvideo+bestaudio/best',
         'merge_output_format': 'mp4',
         'outtmpl': output_path,
         'noplaylist': True,
@@ -448,7 +448,7 @@ def download_video_segment(url: str, output_path: str, start_time: float, end_ti
             'ffmpeg': [
                 '-c:v', 'libx264',
                 '-preset', 'medium',
-                '-crf', '20',
+                '-crf', '18',
                 '-c:a', 'aac',
                 '-b:a', '192k'
             ]

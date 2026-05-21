@@ -25,7 +25,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # --- Video Processing ---
 MAX_SHORTS_PER_VIDEO = 15
-MIN_SHORT_DURATION = 45.0
+MIN_SHORT_DURATION = 55.0
 MAX_SHORT_DURATION = 90.0
 DELETE_OUTPUT_AFTER_SENDING = os.environ.get("DELETE_OUTPUT_AFTER_SENDING", "false").lower() == "true"
 PROJECT_ROOT = Path(__file__).parent

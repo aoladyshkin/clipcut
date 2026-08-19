@@ -14,12 +14,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# YouTube's "n" signature challenge requires a small JS solver script that yt-dlp
+# no longer bundles; it must be fetched on first use (then cached) from the
+# official yt-dlp-ejs GitHub releases. Without this, high-quality (>360p)
+# formats resolve to broken URLs and downloads fail with HTTP 403.
+YTDLP_REMOTE_COMPONENTS = ['ejs:github']
+
 def get_video_duration(url: str) -> Optional[float]:
     """
     Retrieves the duration of a video in seconds using yt-dlp, with an ffprobe fallback.
     """
     try:
         ydl_opts = {
+            'remote_components': YTDLP_REMOTE_COMPONENTS,
             'quiet': True,
             'skip_download': True,
             'simulate': True,
@@ -118,6 +125,7 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     elif platform == 'twitch':
         try:
             ydl_opts = {
+                'remote_components': YTDLP_REMOTE_COMPONENTS,
                 'quiet': True,
                 'skip_download': True,
                 'simulate': True,
@@ -154,6 +162,7 @@ def check_video_availability(url: str, lang: str = 'ru') -> (bool, str, str):
     elif platform == 'general' or platform == 'google_drive':
         try:
             ydl_opts = {
+                'remote_components': YTDLP_REMOTE_COMPONENTS,
                 'quiet': True,
                 'skip_download': True,
                 'simulate': True,
@@ -178,6 +187,7 @@ def _get_video_info_yt_dlp(url: str, lang: str = 'ru') -> (Optional[dict], str, 
     """
     try:
         ydl_opts = {
+            'remote_components': YTDLP_REMOTE_COMPONENTS,
             'quiet': True,
             'skip_download': True,
             'simulate': True,
@@ -342,6 +352,7 @@ def get_video_heatmap(url: str) -> Optional[List[Dict[str, float]]]:
     """
     try:
         ydl_opts = {
+            'remote_components': YTDLP_REMOTE_COMPONENTS,
             'quiet': True,
             'skip_download': True,
             'noplaylist': True,
@@ -369,6 +380,7 @@ def download_audio_track(url: str, output_path: str):
     if platform in ['general', 'google_drive']:
         try:
             ydl_opts = {
+                'remote_components': YTDLP_REMOTE_COMPONENTS,
                 'quiet': True,
                 'skip_download': True,
                 'noplaylist': True,
@@ -401,6 +413,7 @@ def download_audio_track(url: str, output_path: str):
     base_name = str(output_path).rsplit('.', 1)[0]
     
     ydl_opts = {
+        'remote_components': YTDLP_REMOTE_COMPONENTS,
         'format': 'bestaudio/best',
         'outtmpl': base_name + '.%(ext)s',
         'quiet': True,
@@ -418,53 +431,78 @@ def download_audio_track(url: str, output_path: str):
     if os.path.exists(expected_file) and expected_file != str(output_path):
         shutil.move(expected_file, output_path)
 
-def download_video_segment(url: str, output_path: str, start_time: float, end_time: float):
+def download_full_video(url: str, output_path: str) -> str:
     """
-    Downloads a specific segment of a YouTube video using yt-dlp and ffmpeg.
-    -ss is used as an input option for fast seeking.
-    The segment is re-encoded to prevent frozen frames at the beginning.
+    Downloads the entire video (capped at 1080p) to a local file.
+
+    YouTube throttles/restricts range-based ("download_ranges") downloads of
+    high-quality adaptive formats, silently falling back to ~360p. Downloading
+    the full video with a regular (non-ranged) request avoids that restriction,
+    so segments can then be cut locally at full quality with `cut_video_segment`.
     """
     output_path = str(output_path)
 
-    def range_func(info_dict, ydl):
-        return [{'start_time': start_time, 'end_time': end_time}]
-
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'remote_components': YTDLP_REMOTE_COMPONENTS,
+        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
         'merge_output_format': 'mp4',
         'outtmpl': output_path,
         'noplaylist': True,
-        'download_ranges': range_func,
-        'force_keyframes_at_cuts': True,
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
         },
-        'external_downloader': 'ffmpeg',
-        'downloader_args': {
-            'ffmpeg': [
-                '-c:v', 'libx264',
-                '-preset', 'medium',
-                '-crf', '18',
-                '-c:a', 'aac',
-                '-b:a', '192k'
-            ]
-        }
     }
 
     if get_video_platform(url) == 'youtube' and YOUTUBE_COOKIES_FILE and os.path.exists(YOUTUBE_COOKIES_FILE):
         ydl_opts['cookiefile'] = YOUTUBE_COOKIES_FILE
 
     try:
-        print(f"Downloading segment from {start_time} to {end_time} using yt-dlp download_ranges...")
+        print(f"Downloading full video (<=1080p) from {url}...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-        
-        print(f"Segment downloaded successfully to {output_path}")
+
+        if not os.path.exists(output_path):
+            raise RuntimeError(f"yt-dlp reported success but output file is missing: {output_path}")
+
+        print(f"Full video downloaded successfully to {output_path}")
         return output_path
-        
+
     except Exception as e:
-        # The original error message from yt-dlp can be verbose, let's log it but raise a cleaner one.
         error_message = str(e)
-        logger.error(f"yt-dlp/ffmpeg failed to download segment: {error_message}", exc_info=True)
-        # Re-raise with a more user-friendly message if needed, or just raise to propagate.
+        logger.error(f"yt-dlp failed to download full video: {error_message}", exc_info=True)
+        raise
+
+
+def cut_video_segment(source_path: str, output_path: str, start_time: float, end_time: float):
+    """
+    Cuts a segment out of an already-downloaded local video file using ffmpeg.
+    The segment is re-encoded so the cut starts exactly at start_time (no
+    frozen first frame), mirroring the accuracy the old range-download had.
+    """
+    source_path = str(source_path)
+    output_path = str(output_path)
+    duration = max(0.0, end_time - start_time)
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(start_time),
+        "-i", source_path,
+        "-t", str(duration),
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "18",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-avoid_negative_ts", "make_zero",
+        output_path,
+    ]
+
+    try:
+        print(f"Cutting local segment {start_time}-{end_time} from {source_path}...")
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        print(f"Segment cut successfully to {output_path}")
+        return output_path
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"ffmpeg failed to cut local segment: {e.stderr}", exc_info=True)
         raise

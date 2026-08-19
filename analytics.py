@@ -19,7 +19,10 @@ def get_clickhouse_client():
             password=os.environ.get('CLICKHOUSE_PASSWORD', ''),
             database=os.environ.get('CLICKHOUSE_DB', 'default'),
             secure=os.environ.get('CLICKHOUSE_SECURE', 'false').lower() == 'true',
-            verify=False
+            verify=False,
+            connect_timeout=5,
+            send_receive_timeout=5,
+            sync_request_timeout=5
         )
         # Check connection by executing a simple query
         client.execute('SELECT 1')

@@ -565,8 +565,18 @@ async def confirm_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return ConversationHandler.END
 
+    # Defensive guard: user_data can be cleared mid-flight by a re-entrant
+    # url_entrypoint/start (e.g. the user sends a new link or hits an old
+    # button right as this handler is running), leaving a stale confirmation
+    # screen with no 'url'/'config' behind it. Fail gracefully instead of
+    # queuing a broken task or crashing with a raw KeyError.
+    if 'url' not in context.user_data or 'config' not in context.user_data:
+        logger.warning(f"confirm_config: user_data missing url/config for user {user_id}, likely a stale confirmation screen.")
+        await query.edit_message_text(get_translation(lang, "session_expired_restart"))
+        return ConversationHandler.END
+
     generation_id = context.user_data.get('generation_id')
-    
+
     # Convert user_data to a serializable format (JSON string)
     serializable_user_data = json.dumps(context.user_data.copy())
 

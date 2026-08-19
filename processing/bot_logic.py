@@ -22,7 +22,7 @@ from faster_whisper import WhisperModel
 from processing.transcription import get_transcript_segments_and_file, get_audio_duration
 from processing.subtitles import create_ass_subtitles, get_subtitle_items
 from config import VIDEO_MAP, MAX_SHORTS_PER_VIDEO, MIN_SHORT_DURATION, MAX_SHORT_DURATION
-from .download import download_video_segment, get_video_duration, get_video_heatmap, download_audio_track
+from .download import download_full_video, cut_video_segment, get_video_duration, get_video_heatmap, download_audio_track
 from .layouts import _build_video_canvas
 from .gpt import get_highlights_from_gpt, get_random_highlights
 from utils import to_seconds, format_seconds_to_hhmmss, get_video_platform
@@ -249,8 +249,8 @@ def get_highlights(url: str, out_dir: Path, audio_path: Path, shorts_number: any
 
     return None
 
-def create_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback):
-    render_futures = process_video_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
+def create_clips(config, full_video_path, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback):
+    render_futures = process_video_clips(config, full_video_path, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
     
     successful_sends = 0
     if render_futures:
@@ -315,13 +315,32 @@ def main(url, config, status_callback=None, send_video_callback=None, deleteOutp
             status_callback(get_translation(lang, "clips_found").format(shorts_timecodes_len=len(shorts_timecodes), num_to_process=num_to_process))
         print(f"Найденные отрезки для шортсов ({len(shorts_timecodes)}):", shorts_timecodes)
 
-        # 4. Создаем клипы
-        successful_sends = create_clips(config, url, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
+        # 4. Скачиваем видео целиком (до 1080p), чтобы дальше вырезать сегменты локально.
+        # YouTube ограничивает скачивание по диапазону (download_ranges) до ~360p,
+        # поэтому сначала качаем весь файл, а затем режем на клипы через ffmpeg.
+        if status_callback:
+            status_callback(get_translation(lang, "downloading_full_video"))
+        full_video_path = out_dir / "full_video.mp4"
+        try:
+            download_full_video(url, full_video_path)
+        except Exception as e:
+            logger.error(f"Не удалось скачать видео целиком для {url}: {e}", exc_info=True)
+            if status_callback:
+                status_callback(get_translation(lang, "video_download_error"))
+            return 0, 0
+
+        try:
+            # 5. Создаем клипы
+            successful_sends = create_clips(config, full_video_path, audio_only, shorts_to_process, transcript_segments, out_dir, send_video_callback)
+        finally:
+            if os.path.exists(full_video_path):
+                os.remove(full_video_path)
+                print(f"🗑️ Полное видео {full_video_path} удалено.")
 
         if audio_only and os.path.exists(audio_only):
             try: os.remove(audio_only)
             except OSError: pass
-        
+
         return successful_sends, extra_found
 
 
@@ -375,32 +394,49 @@ def handle_random_clips_workflow(url, config, out_dir, status_callback, send_vid
     if status_callback:
         status_callback(get_translation(lang, "clips_found").format(shorts_timecodes_len=len(shorts_timecodes), num_to_process=num_to_process))
 
-    # The new orchestrator function handles the rest
-    futures = orchestrate_clip_creation(
-        config=config,
-        url=url,
-        shorts_timecodes=shorts_timecodes,
-        out_dir=out_dir,
-        send_video_callback=send_video_callback,
-        audio_path=None,
-        full_transcript_segments=None,
-        status_callback=status_callback
-    )
+    # Скачиваем видео целиком (до 1080p), чтобы дальше вырезать сегменты локально.
+    if status_callback:
+        status_callback(get_translation(lang, "downloading_full_video"))
+    full_video_path = out_dir / "full_video.mp4"
+    try:
+        download_full_video(url, full_video_path)
+    except Exception as e:
+        logger.error(f"Не удалось скачать видео целиком для {url}: {e}", exc_info=True)
+        if status_callback:
+            status_callback(get_translation(lang, "video_download_error"))
+        return 0, 0
 
-    successful_sends = 0
-    for render_future in futures:
-        try:
-            # .result() on the render_future waits for _render_clip_from_segment to complete
-            # and returns the send_future created by run_coroutine_threadsafe
-            send_future = render_future.result()
-            
-            if send_future:
-                # .result() on the send_future waits for the send_video coroutine to finish
-                success = send_future.result(timeout=600) 
-                if success:
-                    successful_sends += 1
-        except Exception as e:
-            logger.error(f"Future для отправки видео завершился с ошибкой: {e}", exc_info=True)
+    try:
+        # The new orchestrator function handles the rest
+        futures = orchestrate_clip_creation(
+            config=config,
+            full_video_path=full_video_path,
+            shorts_timecodes=shorts_timecodes,
+            out_dir=out_dir,
+            send_video_callback=send_video_callback,
+            audio_path=None,
+            full_transcript_segments=None,
+            status_callback=status_callback
+        )
+
+        successful_sends = 0
+        for render_future in futures:
+            try:
+                # .result() on the render_future waits for _render_clip_from_segment to complete
+                # and returns the send_future created by run_coroutine_threadsafe
+                send_future = render_future.result()
+
+                if send_future:
+                    # .result() on the send_future waits for the send_video coroutine to finish
+                    success = send_future.result(timeout=600)
+                    if success:
+                        successful_sends += 1
+            except Exception as e:
+                logger.error(f"Future для отправки видео завершился с ошибкой: {e}", exc_info=True)
+    finally:
+        if os.path.exists(full_video_path):
+            os.remove(full_video_path)
+            print(f"🗑️ Полное видео {full_video_path} удалено.")
 
     return successful_sends, 0
 
@@ -527,24 +563,25 @@ def _render_clip_from_segment(config, segment_video_path, short_info, clip_num, 
         return send_video_callback(file_path=output_sub, hook=short_info["hook"], start=short_info["start"], end=short_info["end"], virality_score=virality_score)
     return None
 
-def orchestrate_clip_creation(config, url, shorts_timecodes, out_dir, send_video_callback, audio_path=None, full_transcript_segments=None, status_callback=None):
+def orchestrate_clip_creation(config, full_video_path, shorts_timecodes, out_dir, send_video_callback, audio_path=None, full_transcript_segments=None, status_callback=None):
     """
     Orchestrates the creation of video clips using a producer-consumer pattern.
-    Downloads segments sequentially while rendering them sequentially, but overlapping the two phases.
+    Cuts segments out of the pre-downloaded local video sequentially while
+    rendering them sequentially, but overlapping the two phases.
     """
     render_futures = []       # Futures for the rendering tasks
-    
-    # 1. Define the downloader worker function
+
+    # 1. Define the segment-cutting worker function
     def _download_worker_task(clip_num, short_info):
         start_cut = to_seconds(short_info["start"])
         end_cut = to_seconds(short_info["end"])
         segment_video_path = out_dir / f"segment_{clip_num}.mp4"
         try:
-            print(f"Downloading segment {clip_num} ({short_info['start']}-{short_info['end']})...")
-            download_video_segment(url, segment_video_path, start_cut, end_cut)
+            print(f"Cutting segment {clip_num} ({short_info['start']}-{short_info['end']}) from local file...")
+            cut_video_segment(full_video_path, segment_video_path, start_cut, end_cut)
             return clip_num, segment_video_path, short_info
         except Exception as e:
-            logger.error(f"Failed to download segment {clip_num} ({start_cut}-{end_cut}): {e}", exc_info=True)
+            logger.error(f"Failed to cut segment {clip_num} ({start_cut}-{end_cut}): {e}", exc_info=True)
             return clip_num, None, short_info
 
     # 2. Start the downloader in a single-worker executor
@@ -598,10 +635,10 @@ def orchestrate_clip_creation(config, url, shorts_timecodes, out_dir, send_video
     return render_futures
 
 
-def process_video_clips(config, url, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None):
+def process_video_clips(config, full_video_path, audio_path, shorts_timecodes, transcript_segments, out_dir, send_video_callback=None):
     return orchestrate_clip_creation(
         config=config,
-        url=url,
+        full_video_path=full_video_path,
         shorts_timecodes=shorts_timecodes,
         out_dir=out_dir,
         send_video_callback=send_video_callback,

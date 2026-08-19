@@ -21,3 +21,6 @@ venv/
 clipcut.db
 
 data/
+
+# Runtime YouTube cookies (contains live session/auth data)
+cookies.txt
